@@ -1,0 +1,1155 @@
+\documentclass[11pt,a4paper]{article}
+
+% ---------------- PACKAGES ----------------
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[french]{babel}
+\usepackage{lmodern}
+\usepackage{geometry}
+\usepackage{xcolor}
+\usepackage{tcolorbox}
+\usepackage{hyperref}
+\usepackage{enumitem}
+\usepackage{titlesec}
+\usepackage{array}
+\usepackage{longtable}
+\usepackage{booktabs}
+\usepackage{textcomp}
+\usepackage{fancyhdr}
+
+\tcbuselibrary{breakable}
+
+% ---------------- PAGE ----------------
+\geometry{margin=2.2cm}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.45em}
+\setlist[itemize]{leftmargin=1.2cm, itemsep=0.2em}
+
+% ---------------- COLORS ----------------
+\definecolor{myblue}{RGB}{30,70,150}
+\definecolor{mygreen}{RGB}{30,120,60}
+\definecolor{myorange}{RGB}{200,120,40}
+\definecolor{myred}{RGB}{170,50,50}
+\definecolor{softgray}{RGB}{245,245,245}
+
+% ---------------- HYPERREF ----------------
+\hypersetup{
+	colorlinks=true,
+	linkcolor=myblue,
+	urlcolor=myblue,
+	citecolor=myblue
+}
+
+% ---------------- TITLES ----------------
+\titleformat{\section}
+{\Large\bfseries\color{myblue}}
+{\thesection.}{0.5em}{}
+
+\titleformat{\subsection}
+{\large\bfseries\color{myorange}}
+{\thesubsection.}{0.5em}{}
+
+% ---------------- HEADER / FOOTER ----------------
+\pagestyle{fancy}
+\fancyhf{}
+\lhead{Robot Auto-Équilibré STM32F4}
+\rhead{Carnet de bord}
+\cfoot{\thepage}
+\lfoot{\small Pourvu qu'aujourd'hui soit mieux qu'hier.}
+
+% ---------------- BOXES ----------------
+\newtcolorbox{motivation}{
+	breakable,
+	colback=green!5,
+	colframe=mygreen,
+	title=Principe du projet,
+	fonttitle=\bfseries
+}
+
+\newtcolorbox{sessionbox}{
+	breakable,
+	colback=blue!3,
+	colframe=myblue,
+	title=Journal de séance,
+	fonttitle=\bfseries
+}
+
+\newtcolorbox{warningbox}{
+	breakable,
+	colback=red!4,
+	colframe=myred,
+	title=Point d'attention,
+	fonttitle=\bfseries
+}
+
+\newtcolorbox{componentbox}{
+	breakable,
+	colback=orange!4,
+	colframe=myorange,
+	title=Fiche composant,
+	fonttitle=\bfseries
+}
+
+% ---------------- DOCUMENT ----------------
+\title{\textbf{Carnet de Bord\\Robot Auto-Équilibré STM32F4}}
+\author{Ithiel Gabriel Djifa DENYIGBA}
+\date{Version 1.0 -- Juillet 2026}
+
+\begin{document}
+	
+	% ---------------- COVER ----------------
+	\begin{titlepage}
+		\centering
+		\vspace*{2cm}
+		
+		{\Huge\bfseries\color{myblue} Carnet de Bord\\[0.3cm] Robot Auto-Équilibré STM32F4\par}
+		
+		\vspace{1.2cm}
+		
+		{\Large Développement d'un robot auto-équilibré capable de se déplacer et d'évoluer vers la navigation autonome.\par}
+		
+		\vspace{1.5cm}
+		
+		\begin{motivation}
+			\centering
+			\Large\textbf{Pourvu qu'aujourd'hui soit mieux qu'hier.}
+			
+			\vspace{0.3cm}
+			Progresser chaque jour, même légèrement, est une victoire.
+		\end{motivation}
+		
+		\vfill
+		
+		\begin{tabular}{>{\bfseries}l l}
+			Auteur : & Ithiel Gabriel Djifa DENYIGBA \\
+			Projet : & Robot auto-équilibré STM32F4 \\
+			Version : & 1.0 \\
+			Début : & Juillet 2026 \\
+			Budget initial : & 200~\texteuro{} \\
+		\end{tabular}
+		
+		\vspace{2cm}
+	\end{titlepage}
+	
+	\tableofcontents
+	\newpage
+	
+	% ================================
+	% CHAPITRE 1
+	% ================================
+	\section{Pourquoi ce projet ?}
+	
+	Ce projet est un laboratoire personnel pour apprendre et mettre en pratique les notions fondamentales des systèmes embarqués, de l'automatique et de la robotique mobile.
+	
+	Il doit permettre de développer des compétences solides en :
+	
+	\begin{itemize}
+		\item systèmes embarqués ;
+		\item programmation STM32 ;
+		\item électronique appliquée ;
+		\item contrôle moteur ;
+		\item automatique et PID ;
+		\item traitement du signal ;
+		\item fusion de capteurs ;
+		\item robotique mobile ;
+		\item architecture logicielle ;
+		\item gestion de projet technique.
+	\end{itemize}
+	
+	L'objectif n'est pas seulement de construire un robot. Le robot est le résultat visible. Le véritable objectif est de progresser comme ingénieur en apprenant à concevoir, tester, corriger, documenter et améliorer un système réel.
+	
+	\begin{motivation}
+		Le robot n'est pas seulement une machine. Il devient un support d'apprentissage, un terrain d'expérimentation et une preuve concrète de progression.
+		
+		\centering
+		\textbf{Pourvu qu'aujourd'hui soit mieux qu'hier.}
+	\end{motivation}
+	
+	% ================================
+	% CHAPITRE 2
+	% ================================
+	\section{Cahier des charges}
+	
+	\subsection*{Objectif général}
+	
+	Construire un robot auto-équilibré basé sur une carte STM32F4, capable de se stabiliser, de se déplacer et, à terme, d'évoluer vers une navigation autonome.
+	
+	\subsection*{Version 1 -- Stabilisation de base}
+	
+	Le robot doit :
+	
+	\begin{itemize}
+		\item tenir debout en équilibre ;
+		\item avancer ;
+		\item reculer ;
+		\item être contrôlé par une boucle temps réel ;
+		\item exploiter une IMU pour estimer son inclinaison ;
+		\item utiliser des moteurs avec encodeurs pour mesurer le mouvement.
+	\end{itemize}
+	
+	\subsection*{Version 2 -- Robot connecté}
+	
+	Ajouter :
+	
+	\begin{itemize}
+		\item Wi-Fi via ESP32 ;
+		\item télémétrie vers PC ;
+		\item réglage des paramètres PID à distance ;
+		\item contrôle manuel depuis une interface distante.
+	\end{itemize}
+	
+	\subsection*{Version 3 -- Navigation autonome}
+	
+	Ajouter :
+	
+	\begin{itemize}
+		\item navigation d'un point A vers un point B ;
+		\item estimation de déplacement par odométrie ;
+		\item évitement d'obstacles ;
+		\item planification de trajectoire simple.
+	\end{itemize}
+	
+	\subsection*{Contraintes de conception}
+	
+	\begin{itemize}
+		\item privilégier l'apprentissage progressif ;
+		\item valider chaque brique séparément avant intégration ;
+		\item garder une architecture logicielle claire ;
+		\item documenter chaque séance ;
+		\item éviter d'ajouter des fonctionnalités avancées avant stabilisation.
+	\end{itemize}
+	
+	% ================================
+	% CHAPITRE 3
+	% ================================
+	\section{Roadmap de développement}
+	
+	\begin{longtable}{p{3cm}p{5.5cm}p{5.5cm}}
+		\toprule
+		\textbf{Phase} & \textbf{Objectif} & \textbf{Compétences travaillées} \\
+		\midrule
+		Phase 1 & Prise en main STM32 & GPIO, UART, Timers, PWM, interruptions, ADC \\
+		Phase 2 & Briques robot & IMU, I2C, moteur, encodeur, filtre complémentaire \\
+		Phase 3 & Intégration mécanique & châssis, câblage, alimentation, centre de gravité \\
+		Phase 4 & Stabilisation & PID angle, boucle temps réel, tuning \\
+		Phase 5 & Déplacement & vitesse, odométrie, contrôle dynamique \\
+		Phase 6 & Autonomie & Wi-Fi, télémétrie, navigation, évitement d'obstacles \\
+		\bottomrule
+	\end{longtable}
+	
+	\begin{motivation}
+		Chaque phase est une marche. L'objectif n'est pas de sauter les étapes, mais de les valider proprement.
+	\end{motivation}
+	
+	% ================================
+	% CHAPITRE 4
+	% ================================
+	\section{Journal de bord}
+	
+	Chaque séance suit ce format :
+	
+	\begin{itemize}
+		\item Objectif ;
+		\item Réalisation ;
+		\item Problèmes rencontrés ;
+		\item Solution trouvée ;
+		\item Apprentissage ;
+		\item Prochaine étape.
+	\end{itemize}
+	
+	\newpage
+	
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	\subsection*{Séance 0 -- Naissance du projet}
+	
+	\begin{sessionbox}
+		
+		\textbf{Date :} Juillet 2026
+		
+		\vspace{0.3cm}
+		
+		\textbf{Objectif :}
+		
+		Définir la vision du projet, concevoir son architecture et sélectionner l'ensemble du matériel nécessaire à la réalisation du robot auto-équilibré.
+		
+		\vspace{0.3cm}
+		
+		\textbf{Réalisation :}
+		
+		\begin{itemize}
+			\item Définition de la vision du projet.
+			\item Création du carnet de bord.
+			\item Élaboration de la feuille de route de développement.
+			\item Définition des différentes phases du projet.
+			\item Étude des architectures possibles.
+			\item Comparaison des différentes cartes STM32.
+			\item Sélection des moteurs, capteurs et composants.
+			\item Vérification de la compatibilité de tous les éléments.
+			\item Validation de l'architecture électrique.
+			\item Commande de l'ensemble des composants.
+		\end{itemize}
+		
+		\vspace{0.3cm}
+		
+		\textbf{Matériel commandé :}
+		
+		\begin{itemize}
+			\item STM32 Nucleo-F446RE.
+			\item Module IMU MPU6050.
+			\item Driver moteur TB6612FNG.
+			\item Deux motoréducteurs avec encodeurs.
+			\item Batterie LiPo 2S 7,4 V -- 2200 mAh.
+			\item Chargeur LiPo avec équilibrage.
+			\item Convertisseur Buck LM2596.
+			\item Connecteurs Deans avec câbles silicone.
+			\item Interrupteur ON/OFF.
+			\item Multimètre numérique.
+			\item Cutter de précision.
+			\item Plaques de PVC expansé.
+			\item Fils de câblage.
+			\item Câbles Dupont.
+		\end{itemize}
+		
+		\vspace{0.3cm}
+		
+		\textbf{Budget du projet :}
+		
+		\begin{center}
+			\Huge
+			\textbf{200~\texteuro{}}
+			
+			\Large
+			Version 1
+		\end{center}
+		
+		\vspace{0.3cm}
+		
+		\textbf{Difficultés rencontrées :}
+		
+		\begin{itemize}
+			\item Choisir entre plusieurs cartes STM32.
+			\item Comprendre l'alimentation d'un robot mobile.
+			\item Sélectionner une batterie compatible.
+			\item Comprendre le rôle du Buck Converter.
+			\item Choisir des moteurs adaptés au contrôle d'équilibre.
+			\item Vérifier la compatibilité entre tous les composants.
+		\end{itemize}
+		
+		\vspace{0.3cm}
+		
+		\textbf{Ce que j'ai appris :}
+		
+		Avant de programmer un robot, il faut d'abord le concevoir. Un bon projet commence par une architecture solide. Le choix des composants est aussi important que les algorithmes qui les feront fonctionner.
+		
+		\vspace{0.3cm}
+		
+		\textbf{Prochaine séance :}
+		
+		Installer STM32CubeIDE et commencer la prise en main de la STM32 avec le premier programme GPIO.
+		
+	\end{sessionbox}
+	
+	\begin{motivation}
+		Aujourd'hui, je n'ai encore écrit aucune ligne de code.
+		
+		Pourtant, le projet est déjà né.
+		
+		Chaque grande réalisation commence par une décision.
+		
+		Aujourd'hui, j'ai décidé de construire quelque chose qui me fera progresser.
+		
+		\vspace{0.4cm}
+		\centering
+		\Large\textbf{Pourvu qu'aujourd'hui soit mieux qu'hier.}
+	\end{motivation}
+	
+	\newpage
+	
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	\subsection*{Séance 1 -- GPIO}
+	
+	\begin{sessionbox}
+		
+		\textbf{Objectif :} Faire clignoter une LED.
+		
+		\vspace{0.3cm}
+		
+		\textbf{Réalisation :}
+		
+		Configuration STM32CubeIDE et configuration d'une broche en sortie GPIO.
+		
+		\vspace{0.3cm}
+		
+		\textbf{Problème :} Aucun pour l'instant.
+		
+		\vspace{0.3cm}
+		
+		\textbf{Apprentissage :}
+		
+		Structure d'un projet STM32. Première interaction avec le microcontrôleur. Compréhension du principe des GPIO.
+		
+		\vspace{0.3cm}
+		
+		\textbf{Prochaine étape :}
+		
+		Ajouter un bouton ou un clignotement temporisé pour comprendre les entrées et les délais.
+		
+	\end{sessionbox}
+	
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	\subsection*{Séance 2 -- UART}
+	
+	\begin{sessionbox}
+		
+		\textbf{Objectif :} Mettre en place un système de debug via terminal série.
+		
+		\vspace{0.3cm}
+		
+		\textbf{Réalisation :}
+		
+		Configurer l'UART de la STM32 et afficher des messages sur un terminal PC.
+		
+		\vspace{0.3cm}
+		
+		\textbf{Résultat attendu :}
+		
+		Afficher un message de type \texttt{Hello Robot} dans le terminal.
+		
+		\vspace{0.3cm}
+		
+		\textbf{Apprentissage :}
+		
+		La communication série devient l'outil principal de diagnostic pendant tout le projet.
+		
+	\end{sessionbox}
+	
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	\subsection*{Séance 3 -- IMU : première communication}
+	
+	\begin{sessionbox}
+		
+		\textbf{Objectif :} Vérifier que le module MPU6050 communique correctement avec la STM32.
+		
+		\vspace{0.3cm}
+		
+		\textbf{Technologie :} I2C.
+		
+		\vspace{0.3cm}
+		
+		\textbf{Réalisation :}
+		
+		Lire le registre d'identification de l'IMU et afficher la réponse via UART.
+		
+		\vspace{0.3cm}
+		
+		\textbf{Résultat attendu :}
+		
+		Confirmer que le capteur répond à l'adresse I2C prévue.
+		
+		\vspace{0.3cm}
+		
+		\textbf{Apprentissage :}
+		
+		Avant d'exploiter un capteur, il faut d'abord valider sa communication électrique et logicielle.
+		
+	\end{sessionbox}
+	
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	\subsection*{Séance 4 -- PWM moteur}
+	
+	\begin{sessionbox}
+		
+		\textbf{Objectif :} Générer un signal PWM pour contrôler la vitesse moteur.
+		
+		\vspace{0.3cm}
+		
+		\textbf{Technologie :} Timers + PWM.
+		
+		\vspace{0.3cm}
+		
+		\textbf{Réalisation :}
+		
+		Configurer un timer STM32 en mode PWM et faire varier le rapport cyclique.
+		
+		\vspace{0.3cm}
+		
+		\textbf{Apprentissage :}
+		
+		Le PWM permet de contrôler l'énergie moyenne envoyée au moteur.
+		
+	\end{sessionbox}
+	
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	\subsection*{Séance 5 -- Encodeurs}
+	
+	\begin{sessionbox}
+		
+		\textbf{Objectif :} Mesurer la vitesse réelle des moteurs.
+		
+		\vspace{0.3cm}
+		
+		\textbf{Technologie :} Timer en mode encodeur.
+		
+		\vspace{0.3cm}
+		
+		\textbf{Réalisation :}
+		
+		Connecter les voies A et B d'un encodeur à deux entrées timer et lire la position moteur.
+		
+		\vspace{0.3cm}
+		
+		\textbf{Apprentissage :}
+		
+		L'encodeur permet de passer d'une commande aveugle à une mesure réelle du mouvement.
+		
+	\end{sessionbox}
+	
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	\subsection*{Séance 6 -- Lecture moteur + sens de rotation}
+	
+	\begin{sessionbox}
+		
+		\textbf{Objectif :} Contrôler la direction et le sens des moteurs.
+		
+		\vspace{0.3cm}
+		
+		\textbf{Technologie :} GPIO + PWM + Driver moteur TB6612FNG.
+		
+		\vspace{0.3cm}
+		
+		\textbf{Réalisation :}
+		
+		\begin{itemize}
+			\item inversion du sens de rotation ;
+			\item test avant/arrière ;
+			\item validation du pont en H TB6612FNG.
+		\end{itemize}
+		
+		\vspace{0.3cm}
+		
+		\textbf{Problème possible :}
+		
+		Le moteur tourne dans le mauvais sens.
+		
+		\vspace{0.3cm}
+		
+		\textbf{Solution :}
+		
+		Inversion des broches de direction IN1/IN2 ou correction logicielle du signe de commande.
+		
+		\vspace{0.3cm}
+		
+		\textbf{Apprentissage :}
+		
+		Un moteur ne se contrôle pas seulement en vitesse, mais aussi en direction.
+		
+	\end{sessionbox}
+	
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	\subsection*{Séance 7 -- Lecture IMU brute}
+	
+	\begin{sessionbox}
+		
+		\textbf{Objectif :} Lire les données brutes de l'IMU.
+		
+		\vspace{0.3cm}
+		
+		\textbf{Technologie :} I2C + MPU6050.
+		
+		\vspace{0.3cm}
+		
+		\textbf{Réalisation :}
+		
+		\begin{itemize}
+			\item lecture des registres d'accélération ;
+			\item lecture du gyroscope ;
+			\item affichage UART.
+		\end{itemize}
+		
+		\vspace{0.3cm}
+		
+		\textbf{Problème attendu :}
+		
+		Valeurs instables et bruitées.
+		
+		\vspace{0.3cm}
+		
+		\textbf{Apprentissage :}
+		
+		Les capteurs bruts ne sont jamais directement exploitables pour le contrôle.
+		
+	\end{sessionbox}
+	
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	\subsection*{Séance 8 -- Filtre complémentaire}
+	
+	\begin{sessionbox}
+		
+		\textbf{Objectif :} Obtenir un angle stable.
+		
+		\vspace{0.3cm}
+		
+		\textbf{Technologie :} Fusion accéléromètre + gyroscope.
+		
+		\vspace{0.3cm}
+		
+		\textbf{Réalisation :}
+		
+		\begin{itemize}
+			\item implémentation du filtre complémentaire ;
+			\item estimation de l'angle de tangage ;
+			\item stabilisation des mesures.
+		\end{itemize}
+		
+		\vspace{0.3cm}
+		
+		\textbf{Problème attendu :}
+		
+		Dérive gyroscopique et bruit de l'accéléromètre.
+		
+		\vspace{0.3cm}
+		
+		\textbf{Solution :}
+		
+		Pondérer l'information du gyroscope et de l'accéléromètre.
+		
+		\vspace{0.3cm}
+		
+		\textbf{Apprentissage :}
+		
+		La fusion de capteurs est une base des systèmes autonomes.
+		
+	\end{sessionbox}
+	
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	\subsection*{Séance 9 -- Test moteur en boucle ouverte}
+	
+	\begin{sessionbox}
+		
+		\textbf{Objectif :} Tester les moteurs sans contrôle fermé.
+		
+		\vspace{0.3cm}
+		
+		\textbf{Technologie :} PWM fixe.
+		
+		\vspace{0.3cm}
+		
+		\textbf{Réalisation :}
+		
+		\begin{itemize}
+			\item test à vitesse constante ;
+			\item test sous différentes charges ;
+			\item observation du comportement mécanique.
+		\end{itemize}
+		
+		\vspace{0.3cm}
+		
+		\textbf{Problème attendu :}
+		
+		La vitesse varie selon la charge et l'état de la batterie.
+		
+		\vspace{0.3cm}
+		
+		\textbf{Apprentissage :}
+		
+		La boucle ouverte est insuffisante pour un système dynamique précis.
+		
+	\end{sessionbox}
+	
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	\subsection*{Séance 10 -- Boucle de contrôle vitesse}
+	
+	\begin{sessionbox}
+		
+		\textbf{Objectif :} Stabiliser la vitesse moteur.
+		
+		\vspace{0.3cm}
+		
+		\textbf{Technologie :} PID vitesse + encodeurs.
+		
+		\vspace{0.3cm}
+		
+		\textbf{Réalisation :}
+		
+		\begin{itemize}
+			\item implémentation d'un PID de vitesse ;
+			\item lecture encodeur ;
+			\item ajustement automatique du PWM.
+		\end{itemize}
+		
+		\vspace{0.3cm}
+		
+		\textbf{Problème attendu :}
+		
+		Oscillations ou réponse trop lente.
+		
+		\vspace{0.3cm}
+		
+		\textbf{Solution :}
+		
+		Régler progressivement les gains, en commençant par le gain proportionnel.
+		
+		\vspace{0.3cm}
+		
+		\textbf{Apprentissage :}
+		
+		Un PID mal réglé crée de l'instabilité au lieu de la corriger.
+		
+	\end{sessionbox}
+	
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	\subsection*{Séance 11 -- Boucle d'équilibre en simulation}
+	
+	\begin{sessionbox}
+		
+		\textbf{Objectif :} Tester le contrôle d'équilibre avant l'intégration physique.
+		
+		\vspace{0.3cm}
+		
+		\textbf{Technologie :} Simulation logicielle d'un pendule inversé simplifié.
+		
+		\vspace{0.3cm}
+		
+		\textbf{Réalisation :}
+		
+		\begin{itemize}
+			\item modélisation simplifiée de l'angle ;
+			\item test du PID angle ;
+			\item validation du comportement attendu.
+		\end{itemize}
+		
+		\vspace{0.3cm}
+		
+		\textbf{Apprentissage :}
+		
+		Toujours tester un contrôle avant de l'appliquer directement à un système instable réel.
+		
+	\end{sessionbox}
+	
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	\subsection*{Séance 12 -- Construction du châssis}
+	
+	\begin{sessionbox}
+		
+		\textbf{Objectif :} Construire la base mécanique du robot.
+		
+		\vspace{0.3cm}
+		
+		\textbf{Technologie :} Mécanique + intégration électronique.
+		
+		\vspace{0.3cm}
+		
+		\textbf{Réalisation :}
+		
+		\begin{itemize}
+			\item assemblage de la structure du robot ;
+			\item fixation des moteurs ;
+			\item positionnement de la batterie pour maîtriser le centre de gravité ;
+			\item installation de la STM32 et du driver moteur ;
+			\item câblage initial.
+		\end{itemize}
+		
+		\vspace{0.3cm}
+		
+		\textbf{Points critiques :}
+		
+		\begin{itemize}
+			\item équilibre mécanique ;
+			\item rigidité du châssis ;
+			\item alignement des roues ;
+			\item fixation stable de l'IMU.
+		\end{itemize}
+		
+		\vspace{0.3cm}
+		
+		\textbf{Apprentissage :}
+		
+		La stabilité d'un robot commence en mécanique, pas en code.
+		
+	\end{sessionbox}
+	
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	\subsection*{Séance 13 -- Première tentative d'équilibre}
+	
+	\begin{sessionbox}
+		
+		\textbf{Objectif :} Faire tenir le robot debout.
+		
+		\vspace{0.3cm}
+		
+		\textbf{Technologie :} IMU + PID angle + PWM.
+		
+		\vspace{0.3cm}
+		
+		\textbf{Réalisation :}
+		
+		\begin{itemize}
+			\item boucle de contrôle à 500--1000 Hz ;
+			\item lecture IMU en temps réel ;
+			\item correction moteur selon l'angle.
+		\end{itemize}
+		
+		\vspace{0.3cm}
+		
+		\textbf{Résultat probable :}
+		
+		Oscillations rapides et instabilité initiale.
+		
+		\vspace{0.3cm}
+		
+		\textbf{Apprentissage :}
+		
+		Un système instable doit être réglé, pas abandonné.
+		
+	\end{sessionbox}
+	
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	\subsection*{Séance 14 -- Stabilisation progressive}
+	
+	\begin{sessionbox}
+		
+		\textbf{Objectif :} Améliorer la stabilité du robot.
+		
+		\vspace{0.3cm}
+		
+		\textbf{Actions :}
+		
+		\begin{itemize}
+			\item réglage progressif du PID ;
+			\item réduction du bruit IMU ;
+			\item amélioration de la fréquence de boucle ;
+			\item observation du comportement mécanique.
+		\end{itemize}
+		
+		\vspace{0.3cm}
+		
+		\textbf{Résultat attendu :}
+		
+		Réduction des oscillations et maintien de l'équilibre pendant plusieurs secondes.
+		
+		\vspace{0.3cm}
+		
+		\textbf{Apprentissage :}
+		
+		Le contrôle est un processus itératif.
+		
+	\end{sessionbox}
+	
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	\subsection*{Séance 15 -- Déplacement contrôlé}
+	
+	\begin{sessionbox}
+		
+		\textbf{Objectif :} Faire avancer et reculer le robot sans tomber.
+		
+		\vspace{0.3cm}
+		
+		\textbf{Technologie :} Contrôle angle + consigne vitesse.
+		
+		\vspace{0.3cm}
+		
+		\textbf{Réalisation :}
+		
+		\begin{itemize}
+			\item ajout d'une consigne de vitesse ;
+			\item couplage entre équilibre et déplacement ;
+			\item test de stabilité dynamique.
+		\end{itemize}
+		
+		\vspace{0.3cm}
+		
+		\textbf{Apprentissage :}
+		
+		Stabilité et mouvement forment un système couplé.
+		
+	\end{sessionbox}
+	
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	\subsection*{Séance 16 -- Préparation autonomie}
+	
+	\begin{sessionbox}
+		
+		\textbf{Objectif :} Préparer une navigation simple d'un point A vers un point B.
+		
+		\vspace{0.3cm}
+		
+		\textbf{Technologie :} Odométrie + contrôle position.
+		
+		\vspace{0.3cm}
+		
+		\textbf{Réalisation :}
+		
+		\begin{itemize}
+			\item estimation de la distance parcourue ;
+			\item correction de trajectoire ;
+			\item test d'un mouvement simple sur une distance donnée.
+		\end{itemize}
+		
+		\vspace{0.3cm}
+		
+		\textbf{Apprentissage :}
+		
+		Un robot stable est une base pour l'autonomie.
+		
+	\end{sessionbox}
+	
+	% ================================
+	% CHAPITRE 5
+	% ================================
+	\section{Les composants}
+	
+	\subsection*{STM32 Nucleo-F446RE}
+	
+	\begin{componentbox}
+		\begin{itemize}
+			\item Microcontrôleur STM32F446RE.
+			\item Coeur ARM Cortex-M4.
+			\item Timers adaptés au PWM et aux encodeurs.
+			\item Interfaces UART, SPI, I2C.
+			\item ADC, DMA et interruptions.
+			\item ST-Link intégré pour programmation et debug.
+		\end{itemize}
+	\end{componentbox}
+	
+	\subsection*{IMU MPU6050}
+	
+	\begin{componentbox}
+		\begin{itemize}
+			\item Accéléromètre 3 axes.
+			\item Gyroscope 3 axes.
+			\item Communication I2C.
+			\item Utilisé pour estimer l'angle du robot.
+		\end{itemize}
+	\end{componentbox}
+	
+	\subsection*{Moteurs avec encodeurs}
+	
+	\begin{componentbox}
+		\begin{itemize}
+			\item Moteurs DC avec réduction mécanique.
+			\item Encodeurs quadrature voies A et B.
+			\item Mesure de vitesse et de position.
+			\item Utilisés pour le contrôle de vitesse et l'odométrie.
+		\end{itemize}
+	\end{componentbox}
+	
+	\subsection*{Driver moteur TB6612FNG}
+	
+	\begin{componentbox}
+		\begin{itemize}
+			\item Double pont en H.
+			\item Contrôle de deux moteurs DC.
+			\item Commande par GPIO et PWM.
+			\item Alimentation moteur séparée de la logique.
+		\end{itemize}
+	\end{componentbox}
+	
+	\subsection*{Alimentation}
+	
+	\begin{componentbox}
+		\begin{itemize}
+			\item Batterie LiPo 2S 7,4 V.
+			\item Convertisseur Buck LM2596 pour obtenir une tension logique stable.
+			\item Interrupteur ON/OFF sur la ligne positive.
+			\item Connecteurs Deans pour la puissance.
+		\end{itemize}
+	\end{componentbox}
+	
+	% ================================
+	% CHAPITRE 6
+	% ================================
+	\section{Notions théoriques}
+	
+	\subsection*{GPIO}
+	
+	Les GPIO permettent de commander ou lire des signaux numériques simples. Ils seront utilisés pour les LEDs, boutons et signaux de direction des moteurs.
+	
+	\subsection*{UART}
+	
+	L'UART sert au debug et à la télémétrie. C'est un outil essentiel pour observer l'état interne du robot pendant les essais.
+	
+	\subsection*{I2C}
+	
+	L'I2C permet de communiquer avec l'IMU. Il utilise deux lignes principales : SDA pour les données et SCL pour l'horloge.
+	
+	\subsection*{PWM}
+	
+	Le PWM permet de contrôler la puissance moyenne envoyée aux moteurs. Il sera généré par les timers STM32.
+	
+	\subsection*{Encodeurs}
+	
+	Les encodeurs mesurent le mouvement réel des moteurs. Avec deux voies A et B, ils permettent de connaître la vitesse, la position et le sens de rotation.
+	
+	\subsection*{Filtre complémentaire}
+	
+	Le filtre complémentaire fusionne l'information rapide mais dérivante du gyroscope avec l'information plus stable mais bruitée de l'accéléromètre.
+	
+	\subsection*{PID}
+	
+	Le PID corrige l'erreur entre une consigne et une mesure. Dans ce projet, il sera utilisé pour la vitesse des moteurs et pour l'équilibre du robot.
+	
+	% ================================
+	% CHAPITRE 7
+	% ================================
+	\section{Architecture du robot}
+	
+	\subsection*{Architecture matérielle}
+	
+	\begin{center}
+		\begin{tabular}{>{\bfseries}p{4cm}p{9cm}}
+			\toprule
+			Élément & Rôle \\
+			\midrule
+			STM32 Nucleo-F446RE & Contrôle temps réel, lecture capteurs, PID, PWM \\
+			MPU6050 & Mesure d'accélération et vitesse angulaire \\
+			TB6612FNG & Interface de puissance entre STM32 et moteurs \\
+			Moteurs + encodeurs & Action mécanique + mesure du mouvement \\
+			LiPo 2S & Source d'énergie principale \\
+			Buck LM2596 & Conversion vers une tension logique stable \\
+			Châssis PVC expansé & Structure mécanique du robot \\
+			\bottomrule
+		\end{tabular}
+	\end{center}
+	
+	\subsection*{Principe de fonctionnement}
+	
+	\begin{itemize}
+		\item L'IMU mesure l'inclinaison du robot.
+		\item La STM32 estime l'angle avec un filtre complémentaire.
+		\item Le PID calcule la correction nécessaire.
+		\item La STM32 génère les signaux PWM.
+		\item Le driver TB6612FNG applique la puissance aux moteurs.
+		\item Les encodeurs mesurent le mouvement réel.
+	\end{itemize}
+	
+	% ================================
+	% CHAPITRE 8
+	% ================================
+	\section{Les erreurs et leçons apprises}
+	
+	\subsection*{Erreur 1 -- PID instable}
+	
+	\textbf{Cause possible :} gain proportionnel trop élevé.
+	
+	\textbf{Solution :} réduire le gain proportionnel puis ajouter progressivement les autres termes.
+	
+	\textbf{Leçon :} régler P avant I et D.
+	
+	\subsection*{Erreur 2 -- Robot qui tremble}
+	
+	\textbf{Cause possible :} bruit IMU, câbles moteurs trop proches des signaux, châssis flexible.
+	
+	\textbf{Solution :} filtrage, séparation des câbles puissance/signaux, fixation rigide de l'IMU.
+	
+	\textbf{Leçon :} un problème de stabilité n'est pas toujours un problème de code.
+	
+	\subsection*{Erreur 3 -- Reset de la STM32}
+	
+	\textbf{Cause possible :} chute de tension lors de l'appel de courant des moteurs.
+	
+	\textbf{Solution :} alimentation logique séparée via Buck Converter et masse commune propre.
+	
+	\textbf{Leçon :} l'alimentation est une partie critique du système.
+	
+	% ================================
+	% CHAPITRE 9
+	% ================================
+	\section{Améliorations futures}
+	
+	\begin{itemize}
+		\item ESP32 pour Wi-Fi et télémétrie.
+		\item Interface web pour visualiser les données en temps réel.
+		\item Réglage PID à distance.
+		\item Écran OLED pour afficher l'état du robot.
+		\item Capteurs de distance VL53L0X.
+		\item Caméra.
+		\item Navigation autonome.
+		\item SLAM simple.
+		\item Passage à un châssis imprimé en 3D ou aluminium.
+	\end{itemize}
+	
+	% ================================
+	% CHAPITRE 10
+	% ================================
+	\section{Matériel et plan d'achat}
+	
+	\subsection*{Matériel acheté pour la version 1}
+	
+	\begin{longtable}{p{6cm}p{7.5cm}}
+		\toprule
+		\textbf{Composant} & \textbf{Rôle} \\
+		\midrule
+		STM32 Nucleo-F446RE & Carte principale temps réel \\
+		MPU6050 & Mesure inertielle \\
+		TB6612FNG & Driver moteur \\
+		Deux motoréducteurs avec encodeurs & Actionnement et mesure de mouvement \\
+		LiPo 2S 7,4 V -- 2200 mAh & Batterie principale \\
+		Chargeur LiPo avec équilibrage & Recharge sécurisée \\
+		Buck LM2596 & Conversion tension logique \\
+		Connecteurs Deans + câbles silicone & Distribution puissance \\
+		Interrupteur ON/OFF & Coupure alimentation \\
+		Multimètre & Diagnostic électrique \\
+		Cutter & Fabrication châssis \\
+		PVC expansé & Structure mécanique \\
+		Fils Dupont et câbles & Connexions logiques et puissance \\
+		\bottomrule
+	\end{longtable}
+	
+	\subsection*{Budget}
+	
+	Le coût total de la version initiale du projet est estimé à :
+	
+	\begin{center}
+		\Huge\textbf{200~\texteuro{}}
+	\end{center}
+	
+	\subsection*{Achats reportés}
+	
+	\begin{itemize}
+		\item ESP32 pour Wi-Fi ;
+		\item écran OLED ;
+		\item capteurs de distance ;
+		\item caméra ;
+		\item châssis avancé.
+	\end{itemize}
+	
+	% ================================
+	% CONCLUSION
+	% ================================
+	\section*{Conclusion}
+	\addcontentsline{toc}{section}{Conclusion}
+	
+	\begin{center}
+		\Huge
+		\textbf{Pourvu qu'aujourd'hui soit mieux qu'hier}
+		
+		\vspace{0.8cm}
+		
+		\Large
+		Je ne cherche pas à être parfait.
+		
+		Je cherche simplement à progresser.
+		
+		Chaque ligne de code écrite.
+		
+		Chaque bug corrigé.
+		
+		Chaque composant compris.
+		
+		Chaque test réalisé.
+		
+		Me rapproche un peu plus de l'ingénieur que je veux devenir.
+	\end{center}
+	
+	\vfill
+	
+	\begin{center}
+		\Large
+		\textbf{Le robot n'est pas la destination.}
+		
+		\vspace{0.3cm}
+		
+		\textbf{Le véritable projet, c'est moi.}
+	\end{center}
+	
+\end{document}
