@@ -1,32 +1,75 @@
-# STM32CubeIDE / Eclipse
-.metadata/
-.settings/
-Debug/
-Release/
-*.launch
+# ==========================================================
+# STM32 Project - Global .gitignore
+# ==========================================================
 
-# Build files
-*.o
+# -------------------------
+# Build directories
+# -------------------------
+build/
+*/build/
+**/build/
+
+# -------------------------
+# CMake generated files
+# -------------------------
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+build.ninja
+.ninja_deps
+.ninja_log
+compile_commands.json
+
+# -------------------------
+# Binary files
+# -------------------------
 *.elf
 *.bin
 *.hex
 *.map
-*.list
-*.su
+*.o
+*.obj
+*.a
 *.d
+*.su
+*.lst
 
-# LaTeX temporary files
-*.aux
+# -------------------------
+# Debug files
+# -------------------------
 *.log
-*.out
-*.toc
-*.synctex.gz
-*.fls
-*.fdb_latexmk
 
+# -------------------------
+# VS Code
+# -------------------------
+.vscode/
+
+# -------------------------
+# Eclipse / CubeIDE
+# (on garde les fichiers nécessaires au projet)
+# -------------------------
+.settings/
+
+# -------------------------
 # OS files
+# -------------------------
 .DS_Store
 Thumbs.db
 
-# VS Code
-.vscode/
+# -------------------------
+# Temporary files
+# -------------------------
+*~
+*.swp
+*.swo
+
+# -------------------------
+# caches de latex
+# -------------------------
+
+*.aux
+*.aut
+*.out
+*.toc
+*.synctex.gz
+*.tex
