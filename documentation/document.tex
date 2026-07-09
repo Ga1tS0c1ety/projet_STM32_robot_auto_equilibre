@@ -370,31 +370,117 @@
 	
 	\begin{sessionbox}
 		
-		\textbf{Objectif :} Faire clignoter une LED.
+		\textbf{Date :} Juillet 2026
+		
+		\vspace{0.3cm}
+		
+		\textbf{Objectif :}
+		
+		Faire clignoter la LED intégrée de la carte STM32 Nucleo-F446RE afin de valider la première interaction réelle avec le microcontrôleur.
+		
+		\vspace{0.3cm}
+		
+		\textbf{Objectif pédagogique :}
+		
+		Comprendre le principe d'un GPIO non pas comme une simple fonction logicielle, mais comme un périphérique matériel contrôlé par des registres mémoire. L'objectif était aussi de commencer à comprendre la relation entre le processeur, la carte mémoire, les bus internes, les registres et les broches physiques du microcontrôleur.
 		
 		\vspace{0.3cm}
 		
 		\textbf{Réalisation :}
 		
-		Configuration STM32CubeIDE et configuration d'une broche en sortie GPIO.
+		\begin{itemize}
+			\item Mise en place du dossier de travail de la séance 1.
+			\item Création d'un projet STM32 minimal nommé \texttt{allume\_led}.
+			\item Mise en place d'un workflow de développement basé sur VS Code, CMake, Ninja, la toolchain \texttt{arm-none-eabi-gcc} et OpenOCD.
+			\item Vérification de la détection du ST-Link intégré de la carte Nucleo-F446RE sous Linux.
+			\item Compilation réussie du projet en mode \texttt{Debug}.
+			\item Écriture d'un programme de clignotement de LED sans HAL, par accès direct aux registres.
+			\item Flash du programme sur la STM32 avec OpenOCD.
+			\item Validation expérimentale : la LED LD2 reliée à PA5 clignote correctement.
+			\item Mise en place d'un fichier \texttt{.gitignore} propre pour éviter de versionner les fichiers générés.
+			\item Commit Git et synchronisation du projet avec GitHub.
+		\end{itemize}
 		
 		\vspace{0.3cm}
 		
-		\textbf{Problème :} Aucun pour l'instant.
+		\textbf{Choix technique :}
+		
+		Pour cette séance, le choix a été fait de ne pas utiliser HAL. L'objectif n'était pas seulement d'obtenir un résultat fonctionnel, mais de comprendre le fonctionnement interne du microcontrôleur. Le programme a donc été écrit en manipulant directement les adresses mémoire et les registres nécessaires.
 		
 		\vspace{0.3cm}
 		
-		\textbf{Apprentissage :}
+		\textbf{Problèmes rencontrés :}
 		
-		Structure d'un projet STM32. Première interaction avec le microcontrôleur. Compréhension du principe des GPIO.
+		\begin{itemize}
+			\item Le bouton \textit{Launch STM32CubeMX} de l'extension VS Code ne trouvait pas STM32CubeMX, car STM32CubeMX n'était pas installé ou pas présent dans le chemin système.
+			\item Le projet créé était un projet minimal et non un projet STM32Cube/HAL.
+			\item La première configuration CMake échouait car Ninja n'était pas installé.
+			\item La compilation échouait ensuite car la toolchain ARM \texttt{arm-none-eabi-gcc} n'était pas disponible dans le \texttt{PATH}.
+			\item Certaines fonctions graphiques avancées de l'extension STM32 pour VS Code n'étaient pas directement disponibles car le projet n'était pas reconnu comme un projet STM32Cube complet.
+		\end{itemize}
+		
+		\vspace{0.3cm}
+		
+		\textbf{Solutions trouvées :}
+		
+		\begin{itemize}
+			\item Utilisation du terminal comme workflow principal pour compiler et flasher le programme.
+			\item Installation de Ninja, CMake et de la toolchain ARM.
+			\item Compilation avec \texttt{cmake --preset Debug} puis \texttt{cmake --build --preset Debug}.
+			\item Flash de la carte avec OpenOCD via l'interface ST-Link.
+			\item Décision de conserver ce premier projet comme projet pédagogique minimal, centré sur la compréhension des registres et du fonctionnement matériel.
+		\end{itemize}
+		
+		\vspace{0.3cm}
+		
+		\textbf{Notions comprises :}
+		
+		\begin{itemize}
+			\item Un GPIO est un périphérique matériel interne au microcontrôleur.
+			\item Le processeur ne commande pas directement une LED : il écrit dans des registres mémoire.
+			\item La STM32 utilise le principe du \textit{Memory-Mapped I/O} : les périphériques sont accessibles à travers des adresses mémoire.
+			\item \texttt{GPIOA\_BASE} représente l'adresse de base du périphérique GPIOA.
+			\item Les registres d'un périphérique sont situés à des offsets fixes à partir de son adresse de base.
+			\item Le registre \texttt{MODER} configure le mode des broches GPIO.
+			\item Le registre \texttt{ODR} permet de modifier l'état logique des sorties.
+			\item Avant d'utiliser GPIOA, il faut activer son horloge via le registre \texttt{RCC\_AHB1ENR}.
+			\item AHB signifie \textit{Advanced High-performance Bus}. C'est un bus interne rapide reliant le processeur à certains périphériques.
+			\item Le mot-clé \texttt{volatile} est essentiel pour empêcher le compilateur d'optimiser les accès aux registres matériels.
+			\item Les opérations binaires comme le décalage, le masquage et le XOR permettent de modifier précisément certains bits d'un registre.
+		\end{itemize}
+		
+		\vspace{0.3cm}
+		
+		\textbf{Explication synthétique du fonctionnement :}
+		
+		Le processeur Cortex-M4 écrit dans le registre d'activation d'horloge du RCC afin d'activer le périphérique GPIOA. Ensuite, il configure la broche PA5 en sortie en modifiant les deux bits correspondants dans le registre \texttt{MODER}. Une fois PA5 configurée en sortie, le programme inverse régulièrement le bit 5 du registre \texttt{ODR}. Cette modification logique se traduit matériellement par un changement de tension sur la broche PA5, ce qui provoque l'allumage puis l'extinction de la LED LD2.
+		
+		\vspace{0.3cm}
+		
+		\textbf{Méthode d'apprentissage retenue :}
+		
+		La méthode retenue pour la suite du projet est de comprendre chaque périphérique avant de l'utiliser. Pour chaque nouvelle brique, il faudra identifier le rôle du périphérique, sa position dans la carte mémoire, ses registres principaux, puis écrire le code correspondant. Le but n'est pas seulement d'utiliser une bibliothèque, mais d'apprendre à lire la documentation constructeur et à raisonner directement sur l'architecture du microcontrôleur.
+		
+		\vspace{0.3cm}
+		
+		\textbf{Résultat :}
+		
+		La LED LD2 de la carte Nucleo-F446RE clignote correctement. La chaîne complète de développement est validée : édition du code, compilation, génération de l'exécutable, flash avec ST-Link et exécution sur la carte.
+		
+		\vspace{0.3cm}
+		
+		\textbf{Apprentissage principal :}
+		
+		Le processeur ne commande jamais directement une LED. Il écrit dans des registres mémoire, et ce sont les périphériques matériels qui transforment ces écritures en actions physiques.
 		
 		\vspace{0.3cm}
 		
 		\textbf{Prochaine étape :}
 		
-		Ajouter un bouton ou un clignotement temporisé pour comprendre les entrées et les délais.
+		Commencer la séance 2 avec l'UART afin de mettre en place un premier outil de debug série. Cette étape permettra d'afficher des messages depuis la STM32 vers le PC et de mieux observer l'état interne du programme pendant les essais.
 		
 	\end{sessionbox}
+	
 	
 	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 	\subsection*{Séance 2 -- UART}
