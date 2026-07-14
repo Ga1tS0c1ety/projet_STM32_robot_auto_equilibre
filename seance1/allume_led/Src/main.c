@@ -21,7 +21,8 @@
 
 /* Bits utiles */
 #define RCC_AHB1ENR_GPIOAEN    (1UL << 0)
-#define LED_PIN                5U
+#define LED_INT                5U
+#define LED_EXT                6U
 
 static void delay(volatile uint32_t count)
 {
@@ -37,15 +38,24 @@ int main(void)
     RCC_AHB1ENR |= RCC_AHB1ENR_GPIOAEN;
 
     /* 2. Configurer PA5 en sortie */
-    GPIOA_MODER &= ~(3UL << (LED_PIN * 2U));
-    GPIOA_MODER |=  (1UL << (LED_PIN * 2U));
+    GPIOA_MODER &= ~(3UL << (LED_INT * 2U));
+    GPIOA_MODER |=  (1UL << (LED_INT * 2U));
+
+    /* 2'. Configurer PA6 en sortie */
+    GPIOA_MODER &= ~(3UL << (LED_EXT * 2U));
+    GPIOA_MODER |=  (1UL << (LED_EXT * 2U));
 
     while (1)
     {
-        /* 3. Inverser l'état de PA5 */
-        GPIOA_ODR ^= (1UL << LED_PIN);
-
+        /* 3. Broche PA6 */
+        GPIOA_ODR |= (1UL << LED_EXT) ;
+        GPIOA_ODR &= ~(1UL << LED_INT) ;
         /* 4. Attendre un peu */
+        delay(400000);
+
+        GPIOA_ODR ^= (1UL << LED_EXT) ;
+        GPIOA_ODR ^= (1UL << LED_INT) ;
+
         delay(400000);
     }
 }
