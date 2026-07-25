@@ -487,25 +487,142 @@
 	
 	\begin{sessionbox}
 		
-		\textbf{Objectif :} Mettre en place un système de debug via terminal série.
+		\textbf{Date :} Juillet 2026
+		
+		\vspace{0.3cm}
+		
+		\textbf{Objectif :}
+		
+		Mettre en place une liaison série entre la STM32 Nucleo-F446RE et le PC afin de disposer d'une console de debug simple, fiable et réutilisable pendant tout le projet.
+		
+		\vspace{0.3cm}
+		
+		\textbf{Objectif pédagogique :}
+		
+		Comprendre comment un périphérique UART est configuré en accès direct aux registres : activation des horloges, configuration d'une broche en fonction alternative, choix du débit, activation de l'émetteur et envoi des données caractère par caractère.
+		
+		\vspace{0.3cm}
+		
+		\textbf{Configuration retenue :}
+		
+		\begin{itemize}
+			\item périphérique : \texttt{USART2} ;
+			\item broche d'émission : \texttt{PA2} ;
+			\item fonction alternative : \texttt{AF7} ;
+			\item débit : 115200 bauds ;
+			\item format : 8 bits de données, aucune parité, 1 bit de stop, soit \texttt{115200 8N1} ;
+			\item terminal Linux : \texttt{picocom} sur \texttt{/dev/ttyACM0}.
+		\end{itemize}
 		
 		\vspace{0.3cm}
 		
 		\textbf{Réalisation :}
 		
-		Configurer l'UART de la STM32 et afficher des messages sur un terminal PC.
+		\begin{itemize}
+			\item Activation de l'horloge de \texttt{GPIOA} dans \texttt{RCC\_AHB1ENR}.
+			\item Activation de l'horloge de \texttt{USART2} dans \texttt{RCC\_APB1ENR}.
+			\item Configuration de \texttt{PA2} en mode fonction alternative dans \texttt{GPIOA\_MODER}.
+			\item Sélection de la fonction \texttt{AF7} dans \texttt{GPIOA\_AFRL} afin de relier physiquement \texttt{PA2} à \texttt{USART2\_TX}.
+			\item Configuration du registre \texttt{USART2\_BRR} avec la valeur \texttt{0x8B} pour obtenir environ 115200 bauds à partir d'une horloge de 16 MHz.
+			\item Activation de l'émetteur avec le bit \texttt{TE} puis activation du périphérique avec le bit \texttt{UE} dans \texttt{USART2\_CR1}.
+			\item Écriture de la fonction \texttt{uart\_send\_char()} qui attend le bit \texttt{TXE} avant d'écrire dans le registre \texttt{USART2\_DR}.
+			\item Écriture de la fonction \texttt{uart\_send\_string()} pour transmettre une chaîne caractère par caractère jusqu'au caractère terminal \texttt{'\textbackslash 0'}.
+			\item Écriture de la fonction \texttt{uart\_send\_uint()} pour convertir un entier non signé en caractères décimaux sans utiliser \texttt{printf()}.
+			\item Utilisation d'une temporisation simple basée sur une boucle et l'instruction \texttt{nop} pour espacer les messages.
+			\item Compilation avec CMake, flash avec OpenOCD et observation des messages dans \texttt{picocom}.
+		\end{itemize}
 		
 		\vspace{0.3cm}
 		
-		\textbf{Résultat attendu :}
+		\textbf{Résultats obtenus :}
 		
-		Afficher un message de type \texttt{Hello Robot} dans le terminal.
+		Le premier test a permis d'afficher correctement :
+		
+		\begin{center}
+			\texttt{Hello Robot}
+		\end{center}
+		
+		Le programme a ensuite été enrichi afin d'afficher une suite de messages numérotés :
+		
+		\begin{center}
+			\texttt{Message numero 1}\\
+			\texttt{Message numero 2}\\
+			\texttt{Message numero 3}
+		\end{center}
+		
+		La chaîne complète de communication a ainsi été validée :
+		
+		\begin{center}
+			STM32 $\rightarrow$ USART2 $\rightarrow$ PA2 $\rightarrow$ ST-Link $\rightarrow$ USB $\rightarrow$ \texttt{/dev/ttyACM0} $\rightarrow$ \texttt{picocom}
+		\end{center}
 		
 		\vspace{0.3cm}
 		
-		\textbf{Apprentissage :}
+		\textbf{Organisation logicielle :}
 		
-		La communication série devient l'outil principal de diagnostic pendant tout le projet.
+		Le code UART a été séparé du programme principal afin de commencer à construire une architecture modulaire :
+		
+		\begin{center}
+			\begin{tabular}{l}
+				\texttt{Core/Inc/uart.h} : déclarations de l'interface publique ;\\
+				\texttt{Core/Src/uart.c} : configuration des registres et fonctions d'émission ;\\
+				\texttt{Core/Src/main.c} : logique principale de l'application.
+			\end{tabular}
+		\end{center}
+		
+		Le fichier \texttt{main.c} ne manipule donc plus directement les registres de l'USART. Il utilise uniquement les fonctions \texttt{uart\_init()}, \texttt{uart\_send\_char()}, \texttt{uart\_send\_string()} et \texttt{uart\_send\_uint()}.
+		
+		\vspace{0.3cm}
+		
+		\textbf{Choix concernant \texttt{printf()} :}
+		
+		La redirection de \texttt{printf()} vers l'UART a volontairement été reportée. L'objectif de cette séance était de comprendre les mécanismes fondamentaux de transmission et la conversion manuelle des nombres, sans masquer le fonctionnement derrière la bibliothèque standard.
+		
+		\vspace{0.3cm}
+		
+		\textbf{Problèmes rencontrés :}
+		
+		\begin{itemize}
+			\item Le terminal série \texttt{picocom} n'était pas initialement installé sur le système.
+			\item Le message \texttt{Hello Robot} n'est envoyé qu'une fois au démarrage : si le terminal est ouvert après l'exécution du programme, le message n'est pas visible.
+		\end{itemize}
+		
+		\vspace{0.3cm}
+		
+		\textbf{Solutions trouvées :}
+		
+		\begin{itemize}
+			\item Installation de \texttt{picocom} puis ouverture du port avec la commande \texttt{picocom -b 115200 /dev/ttyACM0}.
+			\item Appui sur le bouton \texttt{RESET} de la carte après l'ouverture du terminal afin de relancer le programme et de recevoir le message initial.
+		\end{itemize}
+		
+		\vspace{0.3cm}
+		
+		\textbf{Notions comprises :}
+		
+		\begin{itemize}
+			\item \texttt{TX} correspond à la transmission et \texttt{RX} à la réception.
+			\item Une communication UART est asynchrone : les deux équipements doivent utiliser le même débit et le même format de trame.
+			\item Une broche en fonction alternative est pilotée par un périphérique matériel et non directement par le registre \texttt{ODR} du GPIO.
+			\item Le débit est défini par le registre \texttt{BRR} à partir de la fréquence d'horloge du périphérique.
+			\item Le bit \texttt{TXE} indique que le registre de transmission peut recevoir un nouveau caractère.
+			\item Le registre \texttt{DR} contient la donnée à transmettre.
+			\item Une chaîne de caractères est un tableau terminé par \texttt{'\textbackslash 0'}.
+			\item Un entier doit être converti en caractères avant de pouvoir être affiché dans un terminal.
+			\item La séparation entre interface \texttt{.h}, implémentation \texttt{.c} et programme principal rend le code plus lisible et réutilisable.
+		\end{itemize}
+		
+		\vspace{0.3cm}
+		
+		\textbf{Apprentissage principal :}
+		
+		L'UART transforme les données écrites par le processeur dans des registres en une suite de bits transmise sur une broche physique. Grâce à cette liaison, le programme embarqué peut rendre visible son état interne sur le PC.
+		
+		\vspace{0.3cm}
+		
+		\textbf{Prochaine étape :}
+		
+		Utiliser cette console UART pendant la séance 3 pour afficher le résultat de la première communication I2C avec le MPU6050, notamment la valeur de son registre d'identification \texttt{WHO\_AM\_I}.
 		
 	\end{sessionbox}
 	
@@ -1046,33 +1163,167 @@
 	% ================================
 	\section{Notions théoriques}
 	
+	\subsection*{Memory-Mapped I/O : carte mémoire, périphériques et registres}
+	
+	Dans un microcontrôleur STM32, l'espace d'adressage ne contient pas uniquement la mémoire dans laquelle sont stockées les variables. Une partie des adresses est réservée aux périphériques matériels : GPIO, UART, I2C, timers, ADC ou encore RCC. Ce principe est appelé \textit{Memory-Mapped I/O}.
+	
+	Pour le processeur, lire ou écrire un registre matériel ressemble donc à lire ou écrire une case mémoire. La différence est que cette opération produit un effet physique ou permet de lire l'état d'un périphérique.
+	
+	\begin{center}
+		\begin{tabular}{>{\bfseries}p{4cm}p{9cm}}
+			\toprule
+			Élément & Signification \\
+			\midrule
+			Carte mémoire & Organisation de tout l'espace d'adresses vu par le processeur. \\
+			Périphérique & Bloc matériel, par exemple GPIOA ou USART2. \\
+			Adresse de base & Première adresse réservée au périphérique. \\
+			Offset & Position d'un registre par rapport à l'adresse de base. \\
+			Registre & Petite zone mémoire, souvent de 32 bits, qui configure ou décrit le périphérique. \\
+			Bit ou champ de bits & Partie précise d'un registre associée à une fonction. \\
+			\bottomrule
+		\end{tabular}
+	\end{center}
+	
+	La règle essentielle est :
+	
+	\begin{center}
+		\textbf{Adresse du registre = adresse de base du périphérique + offset du registre}
+	\end{center}
+	
+	Exemple avec GPIOA :
+	
+	\begin{itemize}
+		\item \texttt{GPIOA\_BASE = 0x40020000} ;
+		\item l'offset de \texttt{MODER} est \texttt{0x00} ;
+		\item l'adresse de \texttt{GPIOA\_MODER} est donc \texttt{0x40020000} ;
+		\item l'offset de \texttt{ODR} est \texttt{0x14} ;
+		\item l'adresse de \texttt{GPIOA\_ODR} est donc \texttt{0x40020014}.
+	\end{itemize}
+	
+	Exemple avec USART2 :
+	
+	\begin{center}
+		\begin{tabular}{>{\bfseries}p{3.5cm}p{3cm}p{5cm}}
+			\toprule
+			Registre & Offset & Rôle principal \\
+			\midrule
+			\texttt{USART2\_SR} & \texttt{0x00} & Indique l'état du périphérique, par exemple \texttt{TXE}. \\
+			\texttt{USART2\_DR} & \texttt{0x04} & Contient la donnée à transmettre ou reçue. \\
+			\texttt{USART2\_BRR} & \texttt{0x08} & Configure le débit en bauds. \\
+			\texttt{USART2\_CR1} & \texttt{0x0C} & Active et configure les fonctions principales de l'USART. \\
+			\bottomrule
+		\end{tabular}
+	\end{center}
+	
+	Une définition comme :
+	
+	\begin{center}
+		\texttt{\#define USART2\_DR (*(volatile uint32\_t *)(USART2\_BASE + 0x04UL))}
+	\end{center}
+	
+	peut être comprise en quatre étapes :
+	
+	\begin{enumerate}
+		\item calculer l'adresse du registre avec la base et l'offset ;
+		\item considérer cette adresse comme un pointeur vers un entier de 32 bits ;
+		\item utiliser \texttt{volatile} pour imposer un véritable accès matériel ;
+		\item déréférencer le pointeur avec \texttt{*} pour lire ou modifier le registre.
+	\end{enumerate}
+	
+	\begin{warningbox}
+		Une adresse incorrecte ou un mauvais bit peut configurer un autre périphérique ou produire un comportement imprévisible. Les adresses, offsets et positions des bits doivent toujours être vérifiés dans le manuel de référence et la datasheet du microcontrôleur.
+	\end{warningbox}
+	
+	\subsection*{Registres et opérations sur les bits}
+	
+	Un registre contient plusieurs fonctions indépendantes. Il ne faut donc généralement pas remplacer toute sa valeur lorsqu'on souhaite modifier un seul bit.
+	
+	Les opérations les plus utilisées sont :
+	
+	\begin{itemize}
+		\item activer un bit : \verb!registre |= (1UL << n)! ;
+		\item désactiver un bit : \verb!registre &= ~(1UL << n)! ;
+		\item tester un bit : \verb!registre & (1UL << n)! ;
+		\item inverser un bit : \verb!registre ^= (1UL << n)! ;
+		\item modifier un champ de plusieurs bits : effacer d'abord le champ avec un masque, puis écrire la nouvelle valeur.
+	\end{itemize}
+	
+	Cette méthode permet de modifier uniquement la fonction recherchée sans perturber les autres bits du registre.
+	
+	\subsection*{RCC et bus internes}
+	
+	Le RCC, ou \textit{Reset and Clock Control}, distribue les horloges aux différents périphériques. Un périphérique dont l'horloge n'est pas activée ne peut pas fonctionner correctement, même si ses registres sont configurés.
+	
+	Les périphériques sont reliés au processeur par plusieurs bus internes :
+	
+	\begin{itemize}
+		\item AHB1 pour des périphériques rapides comme les GPIO ;
+		\item APB1 pour plusieurs périphériques comme USART2, I2C et certains timers ;
+		\item APB2 pour d'autres périphériques rapides comme certains USART et timers.
+	\end{itemize}
+	
+	La démarche habituelle est donc : identifier le bus du périphérique, activer son horloge dans le registre RCC correspondant, puis configurer ses propres registres.
+	
 	\subsection*{GPIO}
 	
-	Les GPIO permettent de commander ou lire des signaux numériques simples. Ils seront utilisés pour les LEDs, boutons et signaux de direction des moteurs.
+	Les GPIO sont des broches numériques configurables. Une broche peut notamment fonctionner comme entrée, sortie, fonction alternative ou entrée analogique. Le registre \texttt{MODER} choisit ce mode.
+	
+	En sortie GPIO, le programme commande directement le niveau logique grâce au registre \texttt{ODR}. En fonction alternative, la broche est confiée à un autre périphérique matériel, par exemple un USART ou un timer.
+	
+	Les GPIO seront utilisés pour les LEDs, les boutons, les signaux de direction des moteurs et plusieurs fonctions alternatives.
 	
 	\subsection*{UART}
 	
-	L'UART sert au debug et à la télémétrie. C'est un outil essentiel pour observer l'état interne du robot pendant les essais.
+	L'UART est une communication série asynchrone. Elle utilise principalement une ligne \texttt{TX} pour transmettre et une ligne \texttt{RX} pour recevoir. Comme aucune horloge n'est transmise sur un fil séparé, les deux équipements doivent partager le même débit et le même format de trame.
+	
+	La configuration \texttt{115200 8N1} signifie : 115200 symboles par seconde, 8 bits de données, aucune parité et 1 bit de stop.
+	
+	Dans ce projet, USART2 transmet sur PA2. Les registres principaux utilisés sont :
+	
+	\begin{itemize}
+		\item \texttt{BRR} pour le débit ;
+		\item \texttt{CR1} pour activer l'émetteur et le périphérique ;
+		\item \texttt{SR} pour consulter l'état de la transmission ;
+		\item \texttt{DR} pour écrire le caractère à transmettre.
+	\end{itemize}
+	
+	L'UART sert au debug et à la télémétrie. Il permet d'observer les mesures, les états et les erreurs internes du robot depuis un terminal PC.
 	
 	\subsection*{I2C}
 	
-	L'I2C permet de communiquer avec l'IMU. Il utilise deux lignes principales : SDA pour les données et SCL pour l'horloge.
+	L'I2C est un bus série synchrone utilisant deux lignes : \texttt{SDA} pour les données et \texttt{SCL} pour l'horloge. Plusieurs périphériques peuvent partager les mêmes lignes, chaque composant étant identifié par une adresse.
+	
+	Dans ce projet, l'I2C permettra à la STM32 de sélectionner un registre du MPU6050, puis de lire ou d'écrire sa valeur. Des résistances de tirage vers le niveau haut sont nécessaires sur SDA et SCL ; elles sont souvent déjà présentes sur les modules MPU6050.
 	
 	\subsection*{PWM}
 	
-	Le PWM permet de contrôler la puissance moyenne envoyée aux moteurs. Il sera généré par les timers STM32.
+	Le PWM, ou modulation de largeur d'impulsion, est un signal numérique périodique dont on fait varier le rapport cyclique. Un rapport cyclique plus élevé augmente la durée pendant laquelle le signal reste à l'état haut et donc la puissance moyenne appliquée au moteur.
+	
+	Le PWM sera généré par un timer STM32 puis transmis au driver TB6612FNG. Il ne modifie pas directement la tension de la batterie : il découpe rapidement l'alimentation afin de contrôler l'énergie moyenne reçue par le moteur.
 	
 	\subsection*{Encodeurs}
 	
-	Les encodeurs mesurent le mouvement réel des moteurs. Avec deux voies A et B, ils permettent de connaître la vitesse, la position et le sens de rotation.
+	Les encodeurs produisent des impulsions lorsque le moteur tourne. Avec deux voies A et B déphasées, ils permettent de déterminer le sens de rotation ainsi que le déplacement relatif.
+	
+	En comptant les impulsions pendant une durée connue, le programme peut estimer la vitesse. En cumulant les impulsions, il peut estimer la position ou la distance parcourue.
 	
 	\subsection*{Filtre complémentaire}
 	
-	Le filtre complémentaire fusionne l'information rapide mais dérivante du gyroscope avec l'information plus stable mais bruitée de l'accéléromètre.
+	L'accéléromètre fournit une estimation de l'inclinaison stable à long terme mais sensible aux vibrations et aux accélérations du robot. Le gyroscope mesure rapidement les variations angulaires mais son intégration dérive progressivement.
+	
+	Le filtre complémentaire combine les deux informations : le gyroscope décrit principalement les variations rapides, tandis que l'accéléromètre corrige lentement la dérive. Le résultat est une estimation d'angle plus stable pour la boucle d'équilibre.
 	
 	\subsection*{PID}
 	
-	Le PID corrige l'erreur entre une consigne et une mesure. Dans ce projet, il sera utilisé pour la vitesse des moteurs et pour l'équilibre du robot.
+	Le PID corrige l'erreur entre une consigne et une mesure :
+	
+	\begin{itemize}
+		\item le terme proportionnel réagit à l'erreur actuelle ;
+		\item le terme intégral corrige une erreur persistante ;
+		\item le terme dérivé anticipe les variations rapides de l'erreur.
+	\end{itemize}
+	
+	Dans ce projet, un PID sera utilisé pour contrôler l'angle du robot et un autre pourra être utilisé pour la vitesse des moteurs. Les gains devront être réglés progressivement afin d'éviter les oscillations et l'instabilité.
 	
 	% ================================
 	% CHAPITRE 7
