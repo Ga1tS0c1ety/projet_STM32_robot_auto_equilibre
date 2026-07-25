@@ -32,6 +32,7 @@ include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/files.cmake)
 target_sources(${PROJECT_NAME} PRIVATE
   # User defined sources
   Src/uart.c
+  Src/i2c.c 
 )
 
 # Add include directories
