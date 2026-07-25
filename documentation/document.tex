@@ -631,29 +631,222 @@
 	
 	\begin{sessionbox}
 		
-		\textbf{Objectif :} Vérifier que le module MPU6050 communique correctement avec la STM32.
+		\textbf{Date :} Juillet 2026
 		
 		\vspace{0.3cm}
 		
-		\textbf{Technologie :} I2C.
+		\textbf{Objectif :}
+		
+		Établir une première communication I2C entre la STM32 Nucleo-F446RE et le module MPU6050, puis vérifier l'identité du capteur en lisant son registre \texttt{WHO\_AM\_I}.
+		
+		\vspace{0.3cm}
+		
+		\textbf{Objectif pédagogique :}
+		
+		Comprendre le chemin complet d'une communication avec un capteur numérique : câblage électrique, configuration des broches en fonction alternative, activation du périphérique I2C, réglage des temporisations, émission d'une adresse, gestion des acquittements et lecture d'un registre interne.
+		
+		\vspace{0.3cm}
+		
+		\textbf{Configuration retenue :}
+		
+		\begin{itemize}
+			\item périphérique STM32 : \texttt{I2C1} ;
+			\item ligne d'horloge : \texttt{PB8 / I2C1\_SCL} ;
+			\item ligne de données : \texttt{PB9 / I2C1\_SDA} ;
+			\item fonction alternative : \texttt{AF4} ;
+			\item mode électrique : sorties \textit{open-drain} avec résistances de tirage ;
+			\item fréquence de l'horloge APB1 : 16 MHz ;
+			\item fréquence du bus I2C : 100 kHz ;
+			\item adresse I2C du MPU6050 : \texttt{0x68} ;
+			\item registre d'identification : \texttt{WHO\_AM\_I} à l'adresse interne \texttt{0x75} ;
+			\item valeur attendue : \texttt{0x68}, soit 104 en décimal.
+		\end{itemize}
+		
+		\vspace{0.3cm}
+		
+		\textbf{Câblage réalisé :}
+		
+		\begin{center}
+			\begin{tabular}{>{\bfseries}p{4cm}p{4cm}p{4cm}}
+				\toprule
+				Nucleo-F446RE & Broche STM32 & MPU6050 \\
+				\midrule
+				3,3 V & Alimentation & VCC \\
+				GND & Masse commune & GND \\
+				D15 & PB8 / I2C1\_SCL & SCL \\
+				D14 & PB9 / I2C1\_SDA & SDA \\
+				\bottomrule
+			\end{tabular}
+		\end{center}
+		
+		Le module s'est correctement allumé après le câblage. Cette LED confirme la présence de l'alimentation, mais elle ne suffit pas à prouver que les échanges I2C fonctionnent.
 		
 		\vspace{0.3cm}
 		
 		\textbf{Réalisation :}
 		
-		Lire le registre d'identification de l'IMU et afficher la réponse via UART.
+		\begin{itemize}
+			\item Configuration de \texttt{PB8} et \texttt{PB9} en mode fonction alternative dans \texttt{GPIOB\_MODER}.
+			\item Sélection de la fonction \texttt{AF4} dans \texttt{GPIOB\_AFRH} afin de relier les broches au périphérique \texttt{I2C1}.
+			\item Configuration des deux lignes en sorties \textit{open-drain}, avec vitesse élevée et résistances de tirage internes.
+			\item Activation de l'horloge de \texttt{GPIOB} dans \texttt{RCC\_AHB1ENR}.
+			\item Activation de l'horloge de \texttt{I2C1} dans \texttt{RCC\_APB1ENR} avec le bit \texttt{I2C1EN}.
+			\item Configuration du champ \texttt{FREQ} de \texttt{I2C1\_CR2} avec la valeur 16, correspondant à une horloge APB1 de 16 MHz.
+			\item Configuration du registre \texttt{CCR} avec la valeur 80 afin d'obtenir un bus I2C à 100 kHz en mode standard.
+			\item Configuration du registre \texttt{TRISE} avec la valeur 17 pour tenir compte du temps de montée maximal des lignes en mode standard.
+			\item Activation du périphérique grâce au bit \texttt{PE} du registre \texttt{I2C1\_CR1}.
+			\item Écriture d'une fonction \texttt{i2c1\_probe()} générant une condition \texttt{START}, envoyant l'adresse \texttt{0x68} et vérifiant la réception d'un acquittement \texttt{ACK}.
+			\item Écriture d'une fonction \texttt{i2c1\_read\_register()} permettant de sélectionner un registre interne, de produire un \textit{Repeated START}, puis de recevoir un octet.
+			\item Lecture du registre \texttt{WHO\_AM\_I} et affichage de sa valeur dans \texttt{picocom} grâce au pilote UART de la séance 2.
+		\end{itemize}
 		
 		\vspace{0.3cm}
 		
-		\textbf{Résultat attendu :}
+		\textbf{Calcul des temporisations :}
 		
-		Confirmer que le capteur répond à l'adresse I2C prévue.
+		Le champ \texttt{FREQ} reçoit la fréquence APB1 exprimée en MHz :
+		
+		\begin{center}
+			\texttt{CR2.FREQ = 16}
+		\end{center}
+		
+		En mode standard, la valeur de \texttt{CCR} est calculée par :
+		
+		\begin{center}
+			\texttt{CCR = 16 000 000 / (2 $\times$ 100 000) = 80}
+		\end{center}
+		
+		Pour le temps de montée maximal de 1~\textmu s, une horloge de 16 MHz représente 16 cycles de 62,5 ns. Le registre est donc programmé avec :
+		
+		\begin{center}
+			\texttt{TRISE = 16 + 1 = 17}
+		\end{center}
 		
 		\vspace{0.3cm}
 		
-		\textbf{Apprentissage :}
+		\textbf{Séquence de lecture de \texttt{WHO\_AM\_I} :}
 		
-		Avant d'exploiter un capteur, il faut d'abord valider sa communication électrique et logicielle.
+		\begin{center}
+			\fbox{\parbox{0.92\textwidth}{
+					\centering
+					\texttt{START}
+					$\rightarrow$ \texttt{0x68 + écriture}
+					$\rightarrow$ \texttt{ACK}
+					$\rightarrow$ \texttt{registre 0x75}
+					$\rightarrow$ \textit{Repeated START}
+					$\rightarrow$ \texttt{0x68 + lecture}
+					$\rightarrow$ \texttt{ACK}
+					$\rightarrow$ \texttt{donnée reçue}
+					$\rightarrow$ \texttt{NACK + STOP}
+			}}
+		\end{center}
+		
+		La première adresse, \texttt{0x68}, sélectionne le composant présent sur le bus. L'adresse \texttt{0x75} sélectionne ensuite un registre précis à l'intérieur de ce composant. Ces deux adresses ne jouent donc pas le même rôle.
+		
+		\vspace{0.3cm}
+		
+		\textbf{Résultats obtenus :}
+		
+		Le premier test d'adressage a produit :
+		
+		\begin{center}
+			\texttt{Test de l'adresse I2C 0x68...}\\
+			\texttt{MPU6050 detecte a l'adresse 0x68}
+		\end{center}
+		
+		La lecture du registre d'identification a ensuite produit :
+		
+		\begin{center}
+			\texttt{Lecture du registre WHO\_AM\_I...}\\
+			\texttt{WHO\_AM\_I = 104 en decimal}\\
+			\texttt{MPU6050 correctement identifie}
+		\end{center}
+		
+		La valeur 104 en décimal correspond à \texttt{0x68} en hexadécimal. Elle confirme que le composant répond à l'adresse prévue et renvoie l'identifiant attendu.
+		
+		\vspace{0.3cm}
+		
+		\textbf{Problèmes rencontrés :}
+		
+		\begin{itemize}
+			\item Lors de la première compilation, les fonctions \texttt{uart\_init()} et \texttt{uart\_send\_string()} étaient déclarées mais introuvables pendant l'édition des liens.
+			\item Le fichier \texttt{uart.c} était présent dans le dossier \texttt{Src}, mais il n'était pas ajouté explicitement aux sources du projet dans \texttt{CMakeLists.txt}.
+			\item Le registre \texttt{TRISE} affichait initialement la valeur 2 au lieu de 17, car la fonction de configuration n'était pas effectivement appelée avant la lecture du registre.
+			\item Une opération automatique de refactorisation proposée par VS Code tentait d'ajouter le fichier d'en-tête \texttt{i2c.h} de manière inadaptée dans \texttt{add\_executable()}.
+		\end{itemize}
+		
+		\vspace{0.3cm}
+		
+		\textbf{Solutions trouvées :}
+		
+		\begin{itemize}
+			\item Ajout explicite de \texttt{Src/uart.c} puis de \texttt{Src/i2c.c} dans \texttt{target\_sources()} du fichier \texttt{CMakeLists.txt}.
+			\item Reconfiguration et recompilation propre du projet avec CMake et Ninja.
+			\item Vérification directe de la valeur de \texttt{TRISE} avant et après l'écriture, ce qui a permis d'identifier l'appel manquant.
+			\item Annulation de la proposition de refactorisation automatique et modification manuelle du fichier CMake.
+		\end{itemize}
+		
+		\vspace{0.3cm}
+		
+		\textbf{Organisation logicielle :}
+		
+		Après validation du prototype dans \texttt{main.c}, le pilote I2C a été séparé afin de conserver une architecture claire :
+		
+		\begin{center}
+			\begin{tabular}{>{\bfseries}p{4cm}p{9cm}}
+				\toprule
+				Fichier & Rôle \\
+				\midrule
+				\texttt{Inc/i2c.h} & Interface publique : initialisation, test d'adresse et lecture d'un registre. \\
+				\texttt{Src/i2c.c} & Registres RCC/GPIO/I2C, fonctions internes de configuration et transactions I2C. \\
+				\texttt{Src/main.c} & Initialisation générale, test du MPU6050 et messages de diagnostic UART. \\
+				\bottomrule
+			\end{tabular}
+		\end{center}
+		
+		Les fonctions internes de configuration sont déclarées \texttt{static}, car elles appartiennent uniquement au pilote. Les fonctions \texttt{i2c1\_init()}, \texttt{i2c1\_probe()} et \texttt{i2c1\_read\_register()} constituent l'interface publique utilisée par le programme principal.
+		
+		\vspace{0.3cm}
+		
+		\textbf{Notions comprises :}
+		
+		\begin{itemize}
+			\item La STM32 joue le rôle de maître et génère l'horloge sur \texttt{SCL}.
+			\item \texttt{SDA} est une ligne bidirectionnelle utilisée pour les adresses, les données et les acquittements.
+			\item Une sortie \textit{open-drain} peut forcer une ligne à zéro ou la relâcher ; la remontée à l'état haut est assurée par une résistance de tirage.
+			\item L'adresse I2C du périphérique et l'adresse d'un registre interne sont deux informations différentes.
+			\item L'adresse I2C \texttt{0x68} est codée sur 7 bits ; le contrôleur ajoute ensuite le bit lecture/écriture dans l'octet transmis.
+			\item Un \texttt{ACK} confirme que le destinataire a reconnu l'adresse ou reçu un octet.
+			\item Le bit \texttt{AF} signale au contraire un défaut d'acquittement.
+			\item La lecture d'un registre utilise généralement une phase d'écriture pour sélectionner le registre, puis une phase de lecture introduite par un \textit{Repeated START}.
+			\item Les bits d'état \texttt{SB}, \texttt{ADDR}, \texttt{TXE}, \texttt{BTF} et \texttt{RXNE} permettent de suivre l'avancement matériel de la transaction.
+			\item Des temporisations logicielles évitent de bloquer indéfiniment le processeur lorsqu'un événement I2C ne se produit pas.
+		\end{itemize}
+		
+		\vspace{0.3cm}
+		
+		\textbf{Résultat final :}
+		
+		La chaîne complète est validée : la STM32 configure I2C1, contacte le MPU6050 à l'adresse \texttt{0x68}, sélectionne le registre \texttt{WHO\_AM\_I}, reçoit la valeur \texttt{0x68} et l'affiche sur le terminal série.
+		
+		\begin{center}
+			\fbox{\parbox{0.88\textwidth}{
+					\centering
+					Cortex-M4 $\rightarrow$ RCC $\rightarrow$ GPIOB/AF4 $\rightarrow$ I2C1 $\rightarrow$ PB8/PB9 $\rightarrow$ MPU6050 $\rightarrow$ UART $\rightarrow$ PC
+			}}
+		\end{center}
+		
+		\vspace{0.3cm}
+		
+		\textbf{Apprentissage principal :}
+		
+		Avant d'utiliser les mesures d'un capteur dans un algorithme, il faut d'abord valider séparément son alimentation, son câblage, son adresse, ses transactions et son identité. Une communication correctement diagnostiquée devient une base fiable pour les étapes suivantes.
+		
+		\vspace{0.3cm}
+		
+		\textbf{Prochaine étape :}
+		
+		Commencer la séance 4 avec la génération d'un signal PWM à l'aide d'un timer STM32. La lecture des données brutes de l'accéléromètre et du gyroscope sera abordée plus tard, pendant la séance 7.
 		
 	\end{sessionbox}
 	
@@ -1291,9 +1484,147 @@
 	
 	\subsection*{I2C}
 	
-	L'I2C est un bus série synchrone utilisant deux lignes : \texttt{SDA} pour les données et \texttt{SCL} pour l'horloge. Plusieurs périphériques peuvent partager les mêmes lignes, chaque composant étant identifié par une adresse.
+	L'I2C, ou \textit{Inter-Integrated Circuit}, est un bus série synchrone utilisé pour relier un contrôleur à un ou plusieurs circuits intégrés. Il utilise seulement deux lignes partagées :
 	
-	Dans ce projet, l'I2C permettra à la STM32 de sélectionner un registre du MPU6050, puis de lire ou d'écrire sa valeur. Des résistances de tirage vers le niveau haut sont nécessaires sur SDA et SCL ; elles sont souvent déjà présentes sur les modules MPU6050.
+	\begin{itemize}
+		\item \texttt{SCL}, ou \textit{Serial Clock}, qui transporte l'horloge générée par le maître ;
+		\item \texttt{SDA}, ou \textit{Serial Data}, qui transporte les adresses, les données et les acquittements dans les deux directions.
+	\end{itemize}
+	
+	Dans le projet, la STM32 est le maître du bus et le MPU6050 est un périphérique esclave. La STM32 décide du début et de la fin des échanges, génère l'horloge et choisit le composant avec lequel elle souhaite communiquer.
+	
+	\begin{center}
+		\fbox{\parbox{0.82\textwidth}{
+				\centering
+				STM32 maître $\rightarrow$ \texttt{SCL} + \texttt{SDA} $\rightarrow$ MPU6050 esclave
+		}}
+	\end{center}
+	
+	\subsubsection*{Sorties open-drain et résistances de tirage}
+	
+	Les lignes I2C utilisent un fonctionnement \textit{open-drain}. Un périphérique peut tirer la ligne vers la masse pour produire un zéro logique, mais il ne force pas directement un niveau haut. Pour produire un état logique 1, tous les composants relâchent la ligne et une résistance de tirage la ramène vers 3,3 V.
+	
+	\begin{center}
+		\begin{tabular}{>{\bfseries}p{4cm}p{8.5cm}}
+			\toprule
+			Action électrique & État obtenu \\
+			\midrule
+			Un composant tire la ligne vers GND & Niveau logique 0 \\
+			Tous les composants relâchent la ligne & La résistance de tirage produit le niveau logique 1 \\
+			\bottomrule
+		\end{tabular}
+	\end{center}
+	
+	Ce principe permet à plusieurs composants de partager les mêmes fils sans qu'un périphérique force un niveau haut pendant qu'un autre force un niveau bas. Les modules MPU6050 possèdent souvent déjà des résistances de tirage, mais leur présence et leur valeur doivent être vérifiées lors de l'intégration matérielle.
+	
+	\subsubsection*{Adresse du périphérique et adresse du registre}
+	
+	Deux niveaux d'adressage interviennent lors de la lecture du MPU6050 :
+	
+	\begin{center}
+		\begin{tabular}{>{\bfseries}p{4.2cm}p{3cm}p{6cm}}
+			\toprule
+			Information & Exemple & Rôle \\
+			\midrule
+			Adresse I2C du périphérique & \texttt{0x68} & Sélectionner le MPU6050 parmi les composants présents sur le bus. \\
+			Adresse du registre interne & \texttt{0x75} & Sélectionner le registre \texttt{WHO\_AM\_I} à l'intérieur du MPU6050. \\
+			Valeur du registre & \texttt{0x68} & Identifier la famille du composant qui a répondu. \\
+			\bottomrule
+		\end{tabular}
+	\end{center}
+	
+	Connaître l'adresse théorique \texttt{0x68} ne prouve pas que le capteur fonctionne. La lecture de \texttt{WHO\_AM\_I} vérifie en même temps le câblage, la configuration logicielle, l'adressage, l'écriture de l'adresse interne et la réception d'une donnée.
+	
+	L'adresse I2C du MPU6050 est exprimée sur 7 bits. Lors de la transmission, le contrôleur construit un octet contenant cette adresse dans les bits 7 à 1, puis ajoute le bit lecture/écriture en position 0 :
+	
+	\begin{center}
+		\texttt{adresse transmise = (adresse 7 bits $\ll$ 1) + bit R/W}
+	\end{center}
+	
+	Ainsi, pour l'adresse \texttt{0x68} :
+	
+	\begin{itemize}
+		\item en écriture, l'octet transmis est \texttt{0xD0} ;
+		\item en lecture, l'octet transmis est \texttt{0xD1}.
+	\end{itemize}
+	
+	\subsubsection*{START, STOP, ACK et NACK}
+	
+	Une transaction I2C est structurée par plusieurs événements :
+	
+	\begin{itemize}
+		\item \texttt{START} : le maître prend le contrôle du bus et commence une transaction ;
+		\item adresse + bit \texttt{R/W} : le maître choisit le destinataire et indique le sens de l'échange ;
+		\item \texttt{ACK} : le récepteur tire SDA à zéro pour confirmer la réception ;
+		\item \texttt{NACK} : absence d'acquittement, utilisée pour signaler une erreur ou la fin d'une réception ;
+		\item \textit{Repeated START} : nouveau départ sans libérer le bus, utile pour passer d'une phase d'écriture à une phase de lecture ;
+		\item \texttt{STOP} : le maître termine l'échange et libère le bus.
+	\end{itemize}
+	
+	Pour lire un registre, la STM32 doit d'abord écrire son adresse interne, puis relancer immédiatement une transaction en lecture :
+	
+	\begin{center}
+		\fbox{\parbox{0.94\textwidth}{
+				\centering
+				\texttt{START}
+				$\rightarrow$ adresse périphérique + écriture
+				$\rightarrow$ \texttt{ACK}
+				$\rightarrow$ adresse du registre
+				$\rightarrow$ \textit{Repeated START}
+				$\rightarrow$ adresse périphérique + lecture
+				$\rightarrow$ \texttt{ACK}
+				$\rightarrow$ donnée
+				$\rightarrow$ \texttt{NACK}
+				$\rightarrow$ \texttt{STOP}
+		}}
+	\end{center}
+	
+	\subsubsection*{Configuration de I2C1 sur STM32F446RE}
+	
+	Dans la séance 3, \texttt{I2C1} a été configuré avec \texttt{PB8} pour SCL et \texttt{PB9} pour SDA. Ces broches sont placées en fonction alternative \texttt{AF4}, en mode \textit{open-drain}.
+	
+	Les principaux registres utilisés sont :
+	
+	\begin{center}
+		\begin{tabular}{>{\bfseries}p{3.5cm}p{9.5cm}}
+			\toprule
+			Registre & Rôle \\
+			\midrule
+			\texttt{CR1} & Activation du périphérique et génération de \texttt{START}, \texttt{STOP} et des acquittements. \\
+			\texttt{CR2} & Indication de la fréquence de l'horloge APB1 exprimée en MHz. \\
+			\texttt{CCR} & Réglage de la période de l'horloge SCL. \\
+			\texttt{TRISE} & Prise en compte du temps maximal de montée des lignes. \\
+			\texttt{DR} & Envoi de l'adresse, du numéro de registre ou d'une donnée ; réception d'une donnée. \\
+			\texttt{SR1} & Événements et erreurs : \texttt{SB}, \texttt{ADDR}, \texttt{BTF}, \texttt{TXE}, \texttt{RXNE}, \texttt{AF}. \\
+			\texttt{SR2} & État général du bus, notamment le bit \texttt{BUSY}. \\
+			\bottomrule
+		\end{tabular}
+	\end{center}
+	
+	Avec une horloge APB1 de 16 MHz et un bus standard à 100 kHz :
+	
+	\begin{itemize}
+		\item \texttt{CR2.FREQ = 16} ;
+		\item \texttt{CCR = 16 000 000 / (2 $\times$ 100 000) = 80} ;
+		\item \texttt{TRISE = 16 + 1 = 17}.
+	\end{itemize}
+	
+	Le champ \texttt{FREQ} ne reçoit donc pas la fréquence du bus I2C. Il reçoit la fréquence d'entrée du périphérique exprimée en MHz. Le registre \texttt{CCR} utilise ensuite cette information pour produire l'horloge SCL recherchée.
+	
+	\subsubsection*{Validation progressive}
+	
+	La communication a été validée en deux étapes :
+	
+	\begin{enumerate}
+		\item \textbf{Test d'adresse :} génération de \texttt{START}, envoi de l'adresse \texttt{0x68} et vérification du bit \texttt{ADDR}. La réponse \texttt{ACK} confirme qu'un composant est présent.
+		\item \textbf{Lecture de l'identifiant :} écriture de l'adresse interne \texttt{0x75}, \textit{Repeated START}, lecture d'un octet et vérification de la valeur \texttt{0x68}.
+	\end{enumerate}
+	
+	Des compteurs de temporisation sont utilisés dans les boucles d'attente. Ils empêchent le programme de rester bloqué indéfiniment si le bus est occupé, si la condition \texttt{START} n'est pas générée ou si le périphérique ne répond pas.
+	
+	\begin{warningbox}
+		Une LED allumée sur le module prouve seulement que le circuit reçoit une alimentation. Elle ne confirme ni le câblage de SDA/SCL, ni la bonne adresse, ni la réussite des transactions. La validation logicielle par \texttt{ACK} puis par lecture de \texttt{WHO\_AM\_I} reste indispensable.
+	\end{warningbox}
 	
 	\subsection*{PWM}
 	
