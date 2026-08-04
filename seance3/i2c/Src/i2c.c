@@ -330,7 +330,7 @@ uint32_t i2c1_read_register(uint8_t adresse_7_bits,
 
     timeout = I2C_TIMEOUT;
 
-    while (!(I2C1_SR1 & (I2C_SR1_ADDR | I2C_SR1_AF))
+    while (!(I2C1_SR1 & (I2C_SR1_ADDR | I2C_SR1_AF)) // est ce que l'adresse à été reconnue et accepté
            && (timeout > 0))
     {
         timeout--;
@@ -342,7 +342,7 @@ uint32_t i2c1_read_register(uint8_t adresse_7_bits,
         return 3;
     }
 
-    if (I2C1_SR1 & I2C_SR1_AF)
+    if (I2C1_SR1 & I2C_SR1_AF) 
     {
         I2C1_SR1 &= ~I2C_SR1_AF;
         I2C1_CR1 |= I2C_CR1_STOP;
@@ -361,7 +361,7 @@ uint32_t i2c1_read_register(uint8_t adresse_7_bits,
      */
     timeout = I2C_TIMEOUT;
 
-    while (!(I2C1_SR1 & I2C_SR1_TXE) && (timeout > 0))
+    while (!(I2C1_SR1 & I2C_SR1_TXE) && (timeout > 0)) // est ce que on peut l'endroit à ecrire est pleine (donc pas vide ?) ?
     {
         timeout--;
     }
@@ -379,7 +379,7 @@ uint32_t i2c1_read_register(uint8_t adresse_7_bits,
      */
     timeout = I2C_TIMEOUT;
 
-    while (!(I2C1_SR1 & I2C_SR1_BTF) && (timeout > 0))
+    while (!(I2C1_SR1 & I2C_SR1_BTF) && (timeout > 0)) // est que l'octet à bien été transferé (donc 0)
     {
         timeout--;
     }
@@ -460,7 +460,7 @@ uint32_t i2c1_read_register(uint8_t adresse_7_bits,
      */
     timeout = I2C_TIMEOUT;
 
-    while (!(I2C1_SR1 & I2C_SR1_RXNE) && (timeout > 0))
+    while (!(I2C1_SR1 & I2C_SR1_RXNE) && (timeout > 0)) //est ce que la donnée recu est pleine (donc pas vide ?)
     {
         timeout--;
     }
