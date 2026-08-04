@@ -855,26 +855,215 @@
 	
 	\begin{sessionbox}
 		
-		\textbf{Objectif :} Générer un signal PWM pour contrôler la vitesse moteur.
+		\textbf{Date :} Août 2026
 		
 		\vspace{0.3cm}
 		
-		\textbf{Technologie :} Timers + PWM.
+		\textbf{Objectif :}
+		
+		Générer un signal PWM matériel avec un timer de la STM32 Nucleo-F446RE, faire varier son rapport cyclique de 0 à 100~\% et valider expérimentalement la tension moyenne obtenue sur une broche.
+		
+		\vspace{0.3cm}
+		
+		\textbf{Objectif pédagogique :}
+		
+		Comprendre comment un timer transforme une horloge interne en un signal périodique : division de fréquence avec le prescaler, comptage jusqu'à une valeur maximale, comparaison avec un registre de capture/compare et routage du signal vers une broche configurée en fonction alternative.
+		
+		\vspace{0.3cm}
+		
+		\textbf{Configuration retenue :}
+		
+		\begin{itemize}
+			\item timer : \texttt{TIM3} ;
+			\item canal PWM : \texttt{TIM3\_CH1} ;
+			\item broche de sortie : \texttt{PA6} ;
+			\item fonction alternative : \texttt{AF2} ;
+			\item horloge du timer considérée : 16 MHz ;
+			\item prescaler : \texttt{PSC = 15} ;
+			\item auto-reload : \texttt{ARR = 999} ;
+			\item fréquence PWM obtenue : 1 kHz ;
+			\item rapport cyclique réglable avec \texttt{CCR1} ;
+			\item mode de sortie : PWM mode 1.
+		\end{itemize}
 		
 		\vspace{0.3cm}
 		
 		\textbf{Réalisation :}
 		
-		Configurer un timer STM32 en mode PWM et faire varier le rapport cyclique.
+		\begin{itemize}
+			\item Activation de l'horloge de \texttt{GPIOA} dans \texttt{RCC\_AHB1ENR}.
+			\item Activation de l'horloge de \texttt{TIM3} dans \texttt{RCC\_APB1ENR}.
+			\item Configuration de \texttt{PA6} en mode fonction alternative dans \texttt{GPIOA\_MODER}.
+			\item Sélection de \texttt{AF2} dans \texttt{GPIOA\_AFRL} afin de relier \texttt{PA6} à \texttt{TIM3\_CH1}.
+			\item Configuration de la sortie en \textit{push-pull}, sans résistance de tirage.
+			\item Arrêt du timer pendant sa configuration avec le bit \texttt{CEN}.
+			\item Programmation de \texttt{PSC = 15} afin de diviser 16 MHz par 16 et d'obtenir un compteur à 1 MHz.
+			\item Programmation de \texttt{ARR = 999} afin d'obtenir une période de 1000 coups de compteur, soit un signal à 1 kHz.
+			\item Configuration du canal 1 en PWM mode 1 avec le champ \texttt{OC1M = 110}.
+			\item Activation du preload de \texttt{CCR1} avec \texttt{OC1PE} et du preload de \texttt{ARR} avec \texttt{ARPE}.
+			\item Activation de la sortie du canal avec le bit \texttt{CC1E} du registre \texttt{CCER}.
+			\item Génération d'un événement de mise à jour avec le bit \texttt{UG} afin de charger immédiatement \texttt{PSC}, \texttt{ARR} et \texttt{CCR1}.
+			\item Création de la fonction \texttt{pwm\_set\_duty()} pour convertir un pourcentage compris entre 0 et 100 en une valeur de \texttt{CCR1}.
+			\item Séparation du pilote dans \texttt{Inc/pwm.h} et \texttt{Src/pwm.c}.
+			\item Affichage des informations de test avec le pilote UART bare-metal, sans utiliser \texttt{printf()}.
+			\item Réalisation d'un test automatique faisant évoluer le rapport cyclique de 0 à 100~\%, puis de 100 à 0~\%, par pas de 10~\%.
+		\end{itemize}
 		
 		\vspace{0.3cm}
 		
-		\textbf{Apprentissage :}
+		\textbf{Calcul de la fréquence PWM :}
 		
-		Le PWM permet de contrôler l'énergie moyenne envoyée au moteur.
+		La fréquence du compteur est donnée par :
+		
+		\begin{center}
+			\texttt{f\_compteur = 16 000 000 / (15 + 1) = 1 000 000 Hz}
+		\end{center}
+		
+		Le compteur parcourt ensuite les valeurs de 0 à 999, soit 1000 états :
+		
+		\begin{center}
+			\texttt{f\_PWM = 1 000 000 / (999 + 1) = 1 000 Hz}
+		\end{center}
+		
+		La période du signal vaut donc 1 ms.
+		
+		\vspace{0.3cm}
+		
+		\textbf{Calcul du rapport cyclique :}
+		
+		\begin{center}
+			\texttt{rapport cyclique = CCR1 / (ARR + 1)}
+		\end{center}
+		
+		Pour 60~\% :
+		
+		\begin{center}
+			\texttt{CCR1 = (999 + 1) $\times$ 60 / 100 = 600}
+		\end{center}
+		
+		En PWM mode 1, la sortie reste active lorsque \texttt{CNT < CCR1}, puis devient inactive lorsque \texttt{CNT >= CCR1}.
+		
+		\vspace{0.3cm}
+		
+		\textbf{Organisation logicielle :}
+		
+		\begin{center}
+			\begin{tabular}{>{\bfseries}p{4cm}p{9cm}}
+				\toprule
+				Fichier & Rôle \\
+				\midrule
+				\texttt{Inc/pwm.h} & Interface publique : initialisation du PWM et réglage du rapport cyclique. \\
+				\texttt{Src/pwm.c} & Adresses mémoire, registres GPIO/RCC/TIM3 et implémentation du pilote. \\
+				\texttt{Src/main.c} & Initialisation générale, test automatique et messages de diagnostic UART. \\
+				\bottomrule
+			\end{tabular}
+		\end{center}
+		
+		Le programme principal utilise uniquement \texttt{pwm\_init()} et \texttt{pwm\_set\_duty()}. Il ne manipule plus directement les registres de \texttt{TIM3}.
+		
+		\vspace{0.3cm}
+		
+		\textbf{Résultats affichés dans \texttt{picocom} :}
+		
+		\begin{center}
+			\texttt{Demarrage du robot}\\
+			\texttt{Initialisation du PWM...}\\
+			\texttt{PWM TIM3\_CH1 actif sur PA6}\\
+			\texttt{Frequence : 1000 Hz}\\
+			\texttt{Rapport cyclique : 60 \%}
+		\end{center}
+		
+		\vspace{0.3cm}
+		
+		\textbf{Validation au multimètre :}
+		
+		Le multimètre a été placé entre \texttt{PA6} et la masse de la carte. Il mesure la valeur moyenne du signal PWM.
+		
+		\begin{center}
+			\begin{tabular}{>{\bfseries}p{3.8cm}p{4cm}p{4cm}}
+				\toprule
+				Rapport cyclique & Valeur théorique & Valeur mesurée \\
+				\midrule
+				0~\% & 0 V & 0 V \\
+				25~\% & 0,825 V & 0,826 V \\
+				60~\% & 1,980 V & 1,983 V \\
+				100~\% & environ 3,3 V & 3,306 V \\
+				\bottomrule
+			\end{tabular}
+		\end{center}
+		
+		Les valeurs mesurées sont très proches des valeurs théoriques. Elles confirment que la fonction \texttt{pwm\_set\_duty()} modifie correctement \texttt{CCR1} et que le signal est bien routé vers \texttt{PA6}.
+		
+		\vspace{0.3cm}
+		
+		\textbf{Test automatique :}
+		
+		\begin{center}
+			\fbox{\parbox{0.82\textwidth}{
+					\centering
+					0~\% $\rightarrow$ 10~\% $\rightarrow$ 20~\% $\rightarrow \cdots \rightarrow$ 100~\%
+					$\rightarrow$ 90~\% $\rightarrow \cdots \rightarrow$ 0~\%
+			}}
+		\end{center}
+		
+		Une temporisation approximative maintient chaque valeur suffisamment longtemps pour observer la montée puis la descente de la tension moyenne au multimètre.
+		
+		\vspace{0.3cm}
+		
+		\textbf{Point de vigilance concernant la boucle descendante :}
+		
+		La variable de boucle descendante est signée. Une variable non signée ne peut pas devenir négative : après zéro, une soustraction provoquerait un débordement et pourrait rendre la boucle infinie.
+		
+		\vspace{0.3cm}
+		
+		\textbf{Notions comprises :}
+		
+		\begin{itemize}
+			\item Le PWM est un signal numérique périodique, et non une véritable tension analogique variable.
+			\item Le prescaler \texttt{PSC} règle la vitesse du compteur.
+			\item Le registre \texttt{ARR} fixe la période du signal.
+			\item Le registre \texttt{CCR1} fixe la durée de l'état actif et donc le rapport cyclique.
+			\item Le compteur parcourt les valeurs de 0 à \texttt{ARR}, ce qui représente \texttt{ARR + 1} états.
+			\item En PWM mode 1, la sortie est active tant que \texttt{CNT < CCR1}.
+			\item Les bits de preload permettent d'appliquer les nouvelles valeurs proprement au début d'une période.
+			\item Une fonction alternative relie la sortie matérielle d'un timer à une broche physique.
+			\item Le multimètre affiche la tension moyenne du PWM, mais il ne montre ni les fronts ni la fréquence exacte du signal.
+			\item La STM32 ne devra pas alimenter directement un moteur : le signal PWM commandera plus tard le driver de puissance TB6612FNG.
+		\end{itemize}
+		
+		\vspace{0.3cm}
+		
+		\textbf{Résultat final :}
+		
+		\begin{center}
+			\fbox{\parbox{0.88\textwidth}{
+					\centering
+					Cortex-M4 $\rightarrow$ RCC $\rightarrow$ TIM3 $\rightarrow$ comparaison \texttt{CNT/CCR1}
+					$\rightarrow$ \texttt{TIM3\_CH1} $\rightarrow$ AF2 $\rightarrow$ PA6
+			}}
+		\end{center}
+		
+		Le pilote génère un signal à 1 kHz dont le rapport cyclique peut être réglé de 0 à 100~\%. Les mesures expérimentales obtenues sont conformes aux calculs.
+		
+		\vspace{0.3cm}
+		
+		\textbf{Apprentissage principal :}
+		
+		Un timer matériel permet de produire un signal précis sans demander au processeur de basculer continuellement une broche. Le processeur configure la fréquence et le rapport cyclique, puis le périphérique timer génère lui-même le signal.
+		
+		\vspace{0.3cm}
+		
+		\textbf{Limite volontaire de la séance :}
+		
+		Le driver TB6612FNG et les moteurs n'ont pas été connectés pendant cette séance. Leur commande par PWM et GPIO de direction sera traitée pendant la séance 6.
+		
+		\vspace{0.3cm}
+		
+		\textbf{Prochaine étape :}
+		
+		Commencer la séance 5 avec les encodeurs afin de mesurer le mouvement réel des moteurs avant l'intégration complète du driver de puissance.
 		
 	\end{sessionbox}
-	
 	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 	\subsection*{Séance 5 -- Encodeurs}
 	
@@ -1626,12 +1815,166 @@
 		Une LED allumée sur le module prouve seulement que le circuit reçoit une alimentation. Elle ne confirme ni le câblage de SDA/SCL, ni la bonne adresse, ni la réussite des transactions. La validation logicielle par \texttt{ACK} puis par lecture de \texttt{WHO\_AM\_I} reste indispensable.
 	\end{warningbox}
 	
-	\subsection*{PWM}
+	\subsection*{PWM et timers}
 	
-	Le PWM, ou modulation de largeur d'impulsion, est un signal numérique périodique dont on fait varier le rapport cyclique. Un rapport cyclique plus élevé augmente la durée pendant laquelle le signal reste à l'état haut et donc la puissance moyenne appliquée au moteur.
+	Le PWM, ou \textit{Pulse Width Modulation}, est un signal numérique périodique dont on fait varier la largeur de l'impulsion. La sortie alterne rapidement entre un niveau bas et un niveau haut, mais la proportion de temps passée à l'état haut peut être modifiée.
 	
-	Le PWM sera généré par un timer STM32 puis transmis au driver TB6612FNG. Il ne modifie pas directement la tension de la batterie : il découpe rapidement l'alimentation afin de contrôler l'énergie moyenne reçue par le moteur.
+	Cette proportion est appelée \textbf{rapport cyclique} :
 	
+	\begin{center}
+		\texttt{D = T\_haut / T\_periode}
+	\end{center}
+	
+	Un rapport cyclique de 0~\% signifie que la sortie reste toujours basse. À 50~\%, elle reste haute pendant la moitié de chaque période. À 100~\%, elle reste toujours haute.
+	
+	\subsubsection*{Tension moyenne}
+	
+	Pour un signal compris entre 0 V et 3,3 V, la tension moyenne idéale vaut :
+	
+	\begin{center}
+		\texttt{V\_moyenne = 3,3 $\times$ D}
+	\end{center}
+	
+	Par exemple, avec un rapport cyclique de 60~\% :
+	
+	\begin{center}
+		\texttt{V\_moyenne = 3,3 $\times$ 0,60 = 1,98 V}
+	\end{center}
+	
+	C'est cette valeur moyenne qu'un multimètre en mode tension continue affiche approximativement. Un oscilloscope ou un analyseur logique serait nécessaire pour observer directement les niveaux hauts et bas, la période, la fréquence et la largeur exacte des impulsions.
+	
+	\subsubsection*{Génération matérielle avec un timer}
+	
+	La STM32 ne génère pas le PWM en exécutant continuellement des instructions pour mettre une broche à zéro puis à un. Elle configure un timer matériel qui travaille ensuite de manière autonome.
+	
+	\begin{center}
+		\fbox{\parbox{0.88\textwidth}{
+				\centering
+				Horloge du timer
+				$\rightarrow$ \texttt{PSC}
+				$\rightarrow$ compteur \texttt{CNT}
+				$\rightarrow$ comparaison avec \texttt{CCR1}
+				$\rightarrow$ canal \texttt{TIM3\_CH1}
+				$\rightarrow$ AF2
+				$\rightarrow$ PA6
+		}}
+	\end{center}
+	
+	Les registres principaux sont :
+	
+	\begin{center}
+		\begin{tabular}{>{\bfseries}p{3.5cm}p{9.5cm}}
+			\toprule
+			Registre & Rôle \\
+			\midrule
+			\texttt{PSC} & Divise la fréquence d'entrée du timer. La division réelle vaut \texttt{PSC + 1}. \\
+			\texttt{CNT} & Contient la valeur courante du compteur. \\
+			\texttt{ARR} & Fixe la valeur maximale du compteur et donc la période. \\
+			\texttt{CCR1} & Fixe la valeur de comparaison du canal 1 et donc le rapport cyclique. \\
+			\texttt{CCMR1} & Configure le mode de sortie du canal, notamment PWM mode 1. \\
+			\texttt{CCER} & Active la sortie du canal et règle sa polarité. \\
+			\texttt{CR1} & Démarre le compteur et active notamment le preload de \texttt{ARR}. \\
+			\texttt{EGR} & Permet de générer un événement de mise à jour avec le bit \texttt{UG}. \\
+			\bottomrule
+		\end{tabular}
+	\end{center}
+	
+	\subsubsection*{Fréquence du compteur et fréquence PWM}
+	
+	\begin{center}
+		\texttt{f\_compteur = f\_timer / (PSC + 1)}
+	\end{center}
+	
+	\begin{center}
+		\texttt{f\_PWM = f\_timer / ((PSC + 1) $\times$ (ARR + 1))}
+	\end{center}
+	
+	Le terme \texttt{ARR + 1} apparaît parce que le compteur parcourt toutes les valeurs de 0 à \texttt{ARR}.
+	
+	Dans la séance 4 :
+	
+	\begin{itemize}
+		\item \texttt{f\_timer = 16 MHz} ;
+		\item \texttt{PSC = 15}, donc le compteur fonctionne à 1 MHz ;
+		\item \texttt{ARR = 999}, donc une période contient 1000 coups de compteur ;
+		\item \texttt{f\_PWM = 1 000 000 / 1000 = 1000 Hz}.
+	\end{itemize}
+	
+	La période vaut donc 1 ms.
+	
+	\subsubsection*{Rapport cyclique et registre CCR1}
+	
+	En PWM mode 1, la sortie est active lorsque \texttt{CNT < CCR1}. Elle devient inactive lorsque le compteur atteint ou dépasse \texttt{CCR1}. Le rapport cyclique idéal est donc :
+	
+	\begin{center}
+		\texttt{D = CCR1 / (ARR + 1)}
+	\end{center}
+	
+	Avec \texttt{ARR = 999} :
+	
+	\begin{center}
+		\begin{tabular}{>{\bfseries}p{4cm}p{4cm}p{4cm}}
+			\toprule
+			Rapport cyclique & Valeur de \texttt{CCR1} & Temps haut à 1 kHz \\
+			\midrule
+			0~\% & 0 & 0~\textmu s \\
+			25~\% & 250 & 250~\textmu s \\
+			60~\% & 600 & 600~\textmu s \\
+			100~\% & 1000 & 1000~\textmu s \\
+			\bottomrule
+		\end{tabular}
+	\end{center}
+	
+	La fonction du pilote applique directement cette relation :
+	
+	\begin{center}
+		\texttt{CCR1 = ((ARR + 1) $\times$ duty\_percent) / 100}
+	\end{center}
+	
+	Le pourcentage est limité à 100 afin d'empêcher l'écriture d'une commande incohérente.
+	
+	\subsubsection*{Preload et mise à jour}
+	
+	Les registres \texttt{ARR} et \texttt{CCR1} peuvent utiliser des registres de preload. Une nouvelle valeur est alors stockée temporairement et appliquée lors du prochain événement de mise à jour. Cela évite de modifier une période en plein milieu et de créer une impulsion irrégulière.
+	
+	Le bit \texttt{ARPE} active le preload de \texttt{ARR}, tandis que \texttt{OC1PE} active celui de \texttt{CCR1}. Le bit \texttt{UG} du registre \texttt{EGR} force un événement de mise à jour, notamment pour charger immédiatement les valeurs de \texttt{PSC}, \texttt{ARR} et \texttt{CCR1} avant le démarrage.
+	
+	\subsubsection*{Fonction alternative et sortie physique}
+	
+	La sortie produite par \texttt{TIM3\_CH1} reste interne au microcontrôleur tant qu'elle n'est pas reliée à une broche. La broche \texttt{PA6} est donc configurée en fonction alternative \texttt{AF2}.
+	
+	\begin{center}
+		\fbox{\parbox{0.82\textwidth}{
+				\centering
+				Timer configuré
+				$\rightarrow$ canal 1 activé
+				$\rightarrow$ \texttt{TIM3\_CH1}
+				$\rightarrow$ fonction alternative AF2
+				$\rightarrow$ sortie physique PA6
+		}}
+	\end{center}
+	
+	\subsubsection*{PWM et commande moteur}
+	
+	Le PWM produit par la STM32 est un signal logique de commande. La broche \texttt{PA6} ne peut pas fournir directement le courant nécessaire à un moteur.
+	
+	Dans une étape ultérieure, le signal sera envoyé à l'entrée PWM du TB6612FNG. Le driver utilisera alors l'alimentation moteur pour commuter le courant dans le moteur :
+	
+	\begin{center}
+		\fbox{\parbox{0.82\textwidth}{
+				\centering
+				STM32 / PWM logique
+				$\rightarrow$ TB6612FNG
+				$\rightarrow$ alimentation de puissance
+				$\rightarrow$ moteur
+		}}
+	\end{center}
+	
+	La séance 4 valide uniquement la génération du signal PWM. Le contrôle du sens de rotation et l'intégration du pont en H seront réalisés pendant la séance 6.
+	
+	\begin{warningbox}
+		Une tension moyenne correcte au multimètre confirme le rapport cyclique de manière indirecte, mais elle ne suffit pas à vérifier précisément la fréquence, les fronts ou d'éventuelles déformations du signal. Une mesure à l'oscilloscope reste la validation la plus complète.
+	\end{warningbox}
 	\subsection*{Encodeurs}
 	
 	Les encodeurs produisent des impulsions lorsque le moteur tourne. Avec deux voies A et B déphasées, ils permettent de déterminer le sens de rotation ainsi que le déplacement relatif.
