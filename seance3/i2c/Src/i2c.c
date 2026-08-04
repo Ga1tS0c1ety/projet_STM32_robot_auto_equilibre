@@ -12,12 +12,12 @@
  */
 
 /* RCC */
-#define RCC_BASE           0x40023800UL
-#define RCC_AHB1ENR        (*(volatile uint32_t *)(RCC_BASE + 0x30UL))
-#define RCC_APB1ENR        (*(volatile uint32_t *)(RCC_BASE + 0x40UL))
+#define RCC_BASE           0x40023800UL //registre de base pour les horloges
+#define RCC_AHB1ENR        (*(volatile uint32_t *)(RCC_BASE + 0x30UL)) //le bus pour le GPIOB
+#define RCC_APB1ENR        (*(volatile uint32_t *)(RCC_BASE + 0x40UL)) // le bus pour le I2C
 
 /* GPIOB */
-#define GPIOB_BASE         0x40020400UL
+#define GPIOB_BASE         0x40020400UL // GPIO_BASE + 400
 
 #define GPIOB_MODER        (*(volatile uint32_t *)(GPIOB_BASE + 0x00UL))
 #define GPIOB_OTYPER       (*(volatile uint32_t *)(GPIOB_BASE + 0x04UL))
@@ -28,31 +28,31 @@
 /* I2C1 */
 #define I2C1_BASE          0x40005400UL
 
-#define I2C1_CR1           (*(volatile uint32_t *)(I2C1_BASE + 0x00UL))
-#define I2C1_CR2           (*(volatile uint32_t *)(I2C1_BASE + 0x04UL))
-#define I2C1_DR            (*(volatile uint32_t *)(I2C1_BASE + 0x10UL))
-#define I2C1_SR1           (*(volatile uint32_t *)(I2C1_BASE + 0x14UL))
-#define I2C1_SR2           (*(volatile uint32_t *)(I2C1_BASE + 0x18UL))
-#define I2C1_CCR           (*(volatile uint32_t *)(I2C1_BASE + 0x1CUL))
-#define I2C1_TRISE         (*(volatile uint32_t *)(I2C1_BASE + 0x20UL))
+#define I2C1_CR1           (*(volatile uint32_t *)(I2C1_BASE + 0x00UL)) // registre de controle pour start stop du I2C
+#define I2C1_CR2           (*(volatile uint32_t *)(I2C1_BASE + 0x04UL)) // registre de controle pour definir la frequence du I2C
+#define I2C1_DR            (*(volatile uint32_t *)(I2C1_BASE + 0x10UL)) // registre de donnée permet l'ecriture et la lecture
+#define I2C1_SR1           (*(volatile uint32_t *)(I2C1_BASE + 0x14UL)) // registre utilisé pour lire les evenement et les erreurs potentiels 
+#define I2C1_SR2           (*(volatile uint32_t *)(I2C1_BASE + 0x18UL)) // registre pour connaitre l'etat general du bus
+#define I2C1_CCR           (*(volatile uint32_t *)(I2C1_BASE + 0x1CUL)) // registre de controle pour definir l'horloge du SCL (cadence = horloge du I2C / (2*la frequence désirée))
+#define I2C1_TRISE         (*(volatile uint32_t *)(I2C1_BASE + 0x20UL)) // registre de controle utilisé pour definir le temps de passage entre les etats (haut et bas)
 
 /* Bits RCC */
-#define RCC_AHB1ENR_GPIOBEN    (1UL << 1)
-#define RCC_APB1ENR_I2C1EN     (1UL << 21)
+#define RCC_AHB1ENR_GPIOBEN    (1UL << 1) //activation du GPIO
+#define RCC_APB1ENR_I2C1EN     (1UL << 21) //activation du I2C
 
 /* Bits I2C_CR1 */
-#define I2C_CR1_PE         (1UL << 0)
-#define I2C_CR1_START      (1UL << 8)
-#define I2C_CR1_STOP       (1UL << 9)
-#define I2C_CR1_ACK        (1UL << 10)
+#define I2C_CR1_PE         (1UL << 0) // activation du I2C
+#define I2C_CR1_START      (1UL << 8) // bit de start 
+#define I2C_CR1_STOP       (1UL << 9) // bit de stop
+#define I2C_CR1_ACK        (1UL << 10) // bit de ACK
 
 /* Bits I2C_SR1 */
-#define I2C_SR1_SB         (1UL << 0)
-#define I2C_SR1_ADDR       (1UL << 1)
-#define I2C_SR1_BTF        (1UL << 2)
-#define I2C_SR1_RXNE       (1UL << 6)
-#define I2C_SR1_TXE        (1UL << 7)
-#define I2C_SR1_AF         (1UL << 10)
+#define I2C_SR1_SB         (1UL << 0) // START Bit 
+#define I2C_SR1_ADDR       (1UL << 1) // ADRESS reconnu 
+#define I2C_SR1_BTF        (1UL << 2) // Byte transfert finished ?
+#define I2C_SR1_RXNE       (1UL << 6) // RX Not Empty ?
+#define I2C_SR1_TXE        (1UL << 7) // TX Empty ?
+#define I2C_SR1_AF         (1UL << 10) // Acknowlege Failure | Accepted or Failure ?
 
 /* Bits I2C_SR2 */
 #define I2C_SR2_BUSY       (1UL << 1)
@@ -69,8 +69,8 @@ static void i2c1_configure_input_clock(void)
      * FREQ  = 16
      */
 
-    I2C1_CR2 &= ~0x3FUL;
-    I2C1_CR2 |= 16UL;
+    I2C1_CR2 &= ~0x3FUL; //mettre tout le registre à 0 
+    I2C1_CR2 |= 16UL; //definir la frequence du I2C
 }
 
 static void i2c1_gpio_init(void)
@@ -192,12 +192,12 @@ uint32_t i2c1_probe(uint8_t adresse_7_bits)
      */
     timeout = I2C_TIMEOUT;
 
-    while ((I2C1_SR2 & I2C_SR2_BUSY) && (timeout > 0))
+    while ((I2C1_SR2 & I2C_SR2_BUSY) && (timeout > 0)) //verifier pendant toute la durée du timeout si l'erreur persite
     {
         timeout--;
     }
 
-    if (timeout == 0)
+    if (timeout == 0) // si le timeout est ecoulé alors il s'est passé quelque d'anormal
     {
         return 1;
     }
@@ -214,7 +214,7 @@ uint32_t i2c1_probe(uint8_t adresse_7_bits)
      */
     timeout = I2C_TIMEOUT;
 
-    while (!(I2C1_SR1 & I2C_SR1_SB) && (timeout > 0))
+    while (!(I2C1_SR1 & I2C_SR1_SB) && (timeout > 0)) // tant que le timeout n'est pas epuisé on verifie si le SR1 et le start bit son actif en même temps sinon y'a un problème de start ou d'event
     {
         timeout--;
     }
@@ -240,7 +240,7 @@ uint32_t i2c1_probe(uint8_t adresse_7_bits)
      */
     timeout = I2C_TIMEOUT;
 
-    while (!(I2C1_SR1 & (I2C_SR1_ADDR | I2C_SR1_AF))
+    while (!(I2C1_SR1 & (I2C_SR1_ADDR | I2C_SR1_AF)) // verifier que l'adresse à été reconnue et accepté 
            && (timeout > 0))
     {
         timeout--;
