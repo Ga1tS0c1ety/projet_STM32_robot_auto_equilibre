@@ -2,55 +2,70 @@
 
 #include "uart.h"
 #include "encoder.h"
+#include "timebase.h"
+
+#define SPEED_SAMPLE_PERIOD_US 100000UL
 
 
-static void delay_approx_ms(uint32_t milliseconds)
+static void afficher_int32(int32_t valeur)
 {
-    for (uint32_t ms = 0; ms < milliseconds; ms++)
-    {
-        for (volatile uint32_t compteur = 0;
-             compteur < 4000U;
-             compteur++)
-        {
-        }
-    }
-}
-
-
-static void afficher_position(int32_t position)
-{
-    uart_send_string("Position : ");
-
-    if (position < 0)
+    if (valeur < 0)
     {
         uart_send_string("-");
-        uart_send_uint((uint32_t)(-(int64_t)position));
+        uart_send_uint((uint32_t)(-(int64_t)valeur));
     }
     else
     {
-        uart_send_uint((uint32_t)position);
+        uart_send_uint((uint32_t)valeur);
     }
-
-    uart_send_string("\r\n");
 }
 
 
 int main(void)
 {
+    int32_t position_precedente;
+    uint32_t temps_precedent;
+
     uart_init();
+    encoder_init();
+    timebase_init();
 
     uart_send_string("Demarrage du robot\r\n");
-    uart_send_string("Initialisation encodeur...\r\n");
-
-    encoder_init();
-
     uart_send_string("Encodeur TIM2 actif\r\n");
-    uart_send_string("PA0 = voie A / PA1 = voie B\r\n");
+    uart_send_string("Base de temps TIM5 active\r\n");
+    uart_send_string("Mesure vitesse toutes les 100 ms\r\n");
+
+    position_precedente = encoder_get_count();
+    temps_precedent = timebase_get_us();
 
     while (1)
     {
-        afficher_position(encoder_get_count());
+        uint32_t temps_actuel = timebase_get_us();
+        uint32_t delta_us = temps_actuel - temps_precedent;
 
-        delay_approx_ms(200);
+        if (delta_us >= SPEED_SAMPLE_PERIOD_US)
+        {
+            int32_t position_actuelle = encoder_get_count();
+
+            int32_t delta_count =
+                position_actuelle - position_precedente;
+
+            int32_t rpm =
+                encoder_compute_rpm(delta_count, delta_us);
+
+            uart_send_string("Position : ");
+            afficher_int32(position_actuelle);
+
+            uart_send_string(" | Delta : ");
+            afficher_int32(delta_count);
+
+            uart_send_string(" | Vitesse : ");
+            afficher_int32((int32_t)rpm);
+
+            uart_send_string(" tr/min\r\n");
+
+            position_precedente = position_actuelle;
+            temps_precedent = temps_actuel;
+        }
     }
 }

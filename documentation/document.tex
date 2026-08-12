@@ -1069,23 +1069,327 @@
 	
 	\begin{sessionbox}
 		
-		\textbf{Objectif :} Mesurer la vitesse réelle des moteurs.
+		\textbf{Date :} Août 2026
 		
 		\vspace{0.3cm}
 		
-		\textbf{Technologie :} Timer en mode encodeur.
+		\textbf{Objectif :}
+		
+		Mesurer le mouvement réel d'un motoréducteur à l'aide de son encodeur quadrature, déterminer son sens de rotation, convertir le comptage en position angulaire puis calculer sa vitesse réelle en tours par minute.
 		
 		\vspace{0.3cm}
 		
-		\textbf{Réalisation :}
+		\textbf{Objectif pédagogique :}
 		
-		Connecter les voies A et B d'un encodeur à deux entrées timer et lire la position moteur.
+		Comprendre qu'un timer STM32 peut être utilisé autrement que comme base de temps ou générateur PWM. En mode encodeur, le compteur du timer n'est plus principalement cadencé par le temps : il évolue en fonction des transitions reçues sur les deux voies A et B. La séance vise aussi à distinguer clairement mesure de position, mesure de temps et calcul de vitesse.
 		
 		\vspace{0.3cm}
 		
-		\textbf{Apprentissage :}
+		\textbf{Configuration retenue :}
 		
-		L'encodeur permet de passer d'une commande aveugle à une mesure réelle du mouvement.
+		\begin{itemize}
+			\item encodeur quadrature : voies A et B du motoréducteur ;
+			\item timer encodeur : \texttt{TIM2} ;
+			\item voie A : \texttt{PA0 / TIM2\_CH1} ;
+			\item voie B : \texttt{PA1 / TIM2\_CH2} ;
+			\item fonction alternative : \texttt{AF1} ;
+			\item mode du timer : Encoder mode 3, avec \texttt{SMS = 011} ;
+			\item compteur : \texttt{TIM2\_CNT}, utilisé comme compteur signé côté logiciel ;
+			\item plage : \texttt{ARR = 0xFFFFFFFF} ;
+			\item base de temps indépendante : \texttt{TIM5} ;
+			\item horloge considérée pour TIM5 : 16 MHz ;
+			\item \texttt{TIM5\_PSC = 15}, soit un compteur à 1 MHz et un tick de 1~\textmu s ;
+			\item période d'échantillonnage de la vitesse : environ 100 ms ;
+			\item calibration retenue : \textbf{3881 comptes par tour de l'axe de sortie}.
+		\end{itemize}
+		
+		\vspace{0.3cm}
+		
+		\textbf{Principe de l'encodeur quadrature :}
+		
+		Les deux sorties A et B sont des signaux numériques déphasés. L'ordre dans lequel leurs états changent permet de déterminer le sens de rotation. Dans un sens, la séquence des états peut être vue comme :
+		
+		\begin{center}
+			\texttt{00 $\rightarrow$ 10 $\rightarrow$ 11 $\rightarrow$ 01 $\rightarrow$ 00}
+		\end{center}
+		
+		et dans l'autre sens comme la séquence inverse :
+		
+		\begin{center}
+			\texttt{00 $\rightarrow$ 01 $\rightarrow$ 11 $\rightarrow$ 10 $\rightarrow$ 00}
+		\end{center}
+		
+		Le timer observe matériellement les transitions de \texttt{TI1} et \texttt{TI2}. Selon leur ordre, il incrémente ou décrémente automatiquement \texttt{TIM2\_CNT}. Le programme C n'exécute donc pas lui-même \texttt{compteur++} ou \texttt{compteur--} à chaque front.
+		
+		\vspace{0.3cm}
+		
+		\textbf{Chemin matériel validé :}
+		
+		\begin{center}
+			\fbox{\parbox{0.90\textwidth}{
+					\centering
+					Encodeur A/B
+					$\rightarrow$ PA0/PA1
+					$\rightarrow$ AF1
+					$\rightarrow$ TIM2\_CH1/TIM2\_CH2
+					$\rightarrow$ TI1/TI2
+					$\rightarrow$ logique quadrature
+					$\rightarrow$ \texttt{TIM2\_CNT}
+			}}
+		\end{center}
+		
+		\vspace{0.3cm}
+		
+		\textbf{Configuration de TIM2 :}
+		
+		\begin{itemize}
+			\item Activation de l'horloge de \texttt{GPIOA} dans \texttt{RCC\_AHB1ENR}.
+			\item Configuration de \texttt{PA0} et \texttt{PA1} en fonction alternative dans \texttt{GPIOA\_MODER}.
+			\item Sélection de \texttt{AF1} dans \texttt{GPIOA\_AFRL} afin de relier PA0 à \texttt{TIM2\_CH1} et PA1 à \texttt{TIM2\_CH2}.
+			\item Activation de l'horloge de \texttt{TIM2} avec \texttt{TIM2EN} dans \texttt{RCC\_APB1ENR}.
+			\item Configuration de \texttt{CC1S = 01} et \texttt{CC2S = 01} dans \texttt{TIM2\_CCMR1} afin de connecter les entrées \texttt{IC1} et \texttt{IC2} à \texttt{TI1} et \texttt{TI2}.
+			\item Polarité normale des deux entrées avec \texttt{CC1P = 0} et \texttt{CC2P = 0} dans \texttt{TIM2\_CCER}.
+			\item Sélection du mode encodeur 3 avec \texttt{SMS = 011} dans \texttt{TIM2\_SMCR}.
+			\item Utilisation de toute la plage 32 bits avec \texttt{TIM2\_ARR = 0xFFFFFFFF}.
+			\item Initialisation de \texttt{TIM2\_CNT} à zéro.
+			\item Démarrage du compteur avec le bit \texttt{CEN} de \texttt{TIM2\_CR1}.
+		\end{itemize}
+		
+		\vspace{0.3cm}
+		
+		\textbf{Organisation logicielle :}
+		
+		\begin{center}
+			\begin{tabular}{>{\bfseries}p{4cm}p{9cm}}
+				\toprule
+				Fichier & Rôle \\
+				\midrule
+				\texttt{Inc/encoder.h} & Interface publique : initialisation, lecture du compteur et calcul de vitesse. \\
+				\texttt{Src/encoder.c} & Registres GPIO/RCC/TIM2, configuration du mode encodeur et conversions liées au mouvement. \\
+				\texttt{Inc/timebase.h} & Interface de la base de temps en microsecondes. \\
+				\texttt{Src/timebase.c} & Configuration de TIM5 comme chronomètre matériel à 1~\textmu s par tick. \\
+				\texttt{Src/main.c} & Échantillonnage, calcul de $\Delta CNT$, calcul de $\Delta t$ et affichage UART. \\
+				\bottomrule
+			\end{tabular}
+		\end{center}
+		
+		\vspace{0.3cm}
+		
+		\textbf{Premier test de position :}
+		
+		Le moteur n'a pas été alimenté pendant le premier essai. L'axe a été tourné à la main afin de vérifier uniquement l'encodeur. Le compteur est resté stable lorsque l'axe était immobile, a augmenté dans un sens et diminué dans l'autre.
+		
+		Extraits représentatifs :
+		
+		\begin{center}
+			\texttt{Position : 336}\\
+			\texttt{Position : 336}\\
+			\texttt{Position : 691}\\
+			\texttt{Position : 520}\\
+			\texttt{Position : 202}\\
+			\texttt{Position : -14}\\
+			\texttt{Position : -241}\\
+			\texttt{Position : -746}
+		\end{center}
+		
+		Ces essais valident simultanément la réception des deux voies, le comptage matériel et la détection du sens de rotation.
+		
+		\vspace{0.3cm}
+		
+		\textbf{Calibration expérimentale :}
+		
+		Pour convertir le compteur en grandeur physique, plusieurs mesures de dix tours complets de l'axe de sortie ont été réalisées :
+		
+		\begin{center}
+			\begin{tabular}{>{\bfseries}p{3.5cm}p{4.5cm}p{4.5cm}}
+				\toprule
+				Essai & Comptes pour 10 tours & Comptes par tour \\
+				\midrule
+				1 & 38826 & 3882,6 \\
+				2 & 38809 & 3880,9 \\
+				3 & 38809 & 3880,9 \\
+				\bottomrule
+			\end{tabular}
+		\end{center}
+		
+		La moyenne expérimentale vaut environ 3881,47 comptes par tour. Pour garder une constante simple dans le code, la valeur retenue est :
+		
+		\begin{center}
+			\Large\textbf{3881 comptes/tour}
+		\end{center}
+		
+		Cette calibration est utilisée pour toutes les conversions suivantes.
+		
+		\vspace{0.3cm}
+		
+		\textbf{Conversion en angle :}
+		
+		Un tour complet correspond à 360 degrés. L'angle cumulé de l'axe peut donc être estimé par :
+		
+		\begin{center}
+			$\theta = \frac{CNT}{3881} \times 360^\circ$
+		\end{center}
+		
+		Ainsi, environ 1940 comptes correspondent à un demi-tour, soit environ 180 degrés. Le signe du compteur indique le sens de rotation.
+		
+		\vspace{0.3cm}
+		
+		\textbf{Création d'une vraie base de temps :}
+		
+		Une temporisation logicielle approximative n'est pas adaptée au calcul d'une vitesse. Un deuxième timer, \texttt{TIM5}, a donc été configuré comme chronomètre matériel indépendant de TIM2.
+		
+		Avec une horloge de 16 MHz et \texttt{PSC = 15} :
+		
+		\begin{center}
+			\texttt{f\_CNT = 16 000 000 / (15 + 1) = 1 000 000 Hz}
+		\end{center}
+		
+		Chaque incrément de \texttt{TIM5\_CNT} représente alors 1~\textmu s. Le registre \texttt{EGR} est utilisé avec le bit \texttt{UG} afin de charger immédiatement la valeur du prescaler avant le démarrage du compteur.
+		
+		Le test de la base de temps a montré une augmentation continue de \texttt{TIM5\_CNT}, validant le fonctionnement du chronomètre matériel.
+		
+		\vspace{0.3cm}
+		
+		\textbf{Calcul de la vitesse :}
+		
+		Deux positions sont lues à deux instants différents :
+		
+		\begin{center}
+			$\Delta CNT = CNT_{actuel} - CNT_{precedent}$
+		\end{center}
+		
+		\begin{center}
+			$\Delta t = t_{actuel} - t_{precedent}$
+		\end{center}
+		
+		La vitesse en tours par minute est ensuite calculée avec :
+		
+		\begin{center}
+			$RPM = \frac{\Delta CNT \times 60 \times 1\,000\,000}{3881 \times \Delta t_{\mu s}}$
+		\end{center}
+		
+		Le calcul est effectué environ toutes les 100 ms. La condition utilise \texttt{delta\_us >= 100000} et non une égalité stricte, car le processeur n'est pas garanti de lire exactement la valeur 100000.
+		
+		\vspace{0.3cm}
+		
+		\textbf{Choix d'un calcul entier :}
+		
+		Une première version du calcul utilisait des nombres flottants. Pendant les essais bare-metal, l'exécution s'arrêtait précisément au moment du calcul de la vitesse en \texttt{float}. Afin de conserver cette séance simple et indépendante d'une configuration supplémentaire de la FPU, le calcul a été réécrit en arithmétique entière.
+		
+		Le numérateur est calculé en \texttt{int64\_t} afin d'éviter un débordement lors du produit :
+		
+		\begin{center}
+			\texttt{delta\_count $\times$ 60 $\times$ 1 000 000}
+		\end{center}
+		
+		Le résultat final est retourné en \texttt{int32\_t}. Les décimales sont volontairement perdues, ce qui est suffisant pour la validation de cette séance. La configuration et l'utilisation de la FPU seront traitées lorsque les calculs flottants deviendront réellement nécessaires, notamment pour le filtrage et le contrôle.
+		
+		\vspace{0.3cm}
+		
+		\textbf{Résultats de vitesse :}
+		
+		Les essais à la main ont produit des valeurs cohérentes dans les deux sens. Lorsque l'axe est immobile, la variation vaut zéro et la vitesse affichée est nulle. En rotation, le signe de la vitesse suit le signe de $\Delta CNT$.
+		
+		\begin{center}
+			\texttt{Position : 43932 | Delta : 0 | Vitesse : 0 tr/min}\\
+			\texttt{Position : 42581 | Delta : -249 | Vitesse : -38 tr/min}\\
+			\texttt{Position : 40824 | Delta : -363 | Vitesse : -56 tr/min}\\
+			\texttt{Position : 39076 | Delta : 171 | Vitesse : 26 tr/min}\\
+			\texttt{Position : 39700 | Delta : 213 | Vitesse : 32 tr/min}\\
+			\texttt{Position : 38812 | Delta : 0 | Vitesse : 0 tr/min}
+		\end{center}
+		
+		Ces mesures montrent correctement l'arrêt, l'accélération, le ralentissement et l'inversion du sens de rotation.
+		
+		\vspace{0.3cm}
+		
+		\textbf{Conversion future en distance et en vitesse linéaire :}
+		
+		Si une roue de diamètre $D$ est montée sur l'axe, sa circonférence vaut $\pi D$. En l'absence de glissement :
+		
+		\begin{center}
+			$d = \frac{CNT}{3881} \times \pi D$
+		\end{center}
+		
+		et, si $D$ est exprimé en mètres, la vitesse linéaire vaut :
+		
+		\begin{center}
+			$v = \frac{\pi D \times RPM}{60}$
+		\end{center}
+		
+		Cette relation constituera plus tard la base de l'odométrie du robot.
+		
+		\vspace{0.3cm}
+		
+		\textbf{Problèmes rencontrés :}
+		
+		\begin{itemize}
+			\item Confusion initiale sur le rôle du timer en mode encodeur : il fallait le voir ici comme un compteur matériel piloté par les fronts A/B et non comme un simple découpage du temps.
+			\item Le premier programme de vitesse affichait les messages d'initialisation puis plus rien.
+			\item Le test isolé de TIM5 a confirmé que la base de temps fonctionnait correctement.
+			\item Des traces UART placées étape par étape ont montré que le blocage apparaissait après le calcul de $\Delta CNT$, au moment du calcul flottant des RPM.
+		\end{itemize}
+		
+		\vspace{0.3cm}
+		
+		\textbf{Solutions trouvées :}
+		
+		\begin{itemize}
+			\item Décomposition du problème en tests séparés : TIM2 pour le mouvement, TIM5 pour le temps, puis combinaison des deux.
+			\item Instrumentation du programme avec des messages UART afin de localiser précisément le point de blocage.
+			\item Remplacement du calcul \texttt{float} par un calcul entier utilisant \texttt{int64\_t} pour les produits intermédiaires.
+			\item Conservation d'une période réelle mesurée avec TIM5 au lieu de supposer que la boucle logicielle dure exactement 100 ms.
+		\end{itemize}
+		
+		\vspace{0.3cm}
+		
+		\textbf{Notions comprises :}
+		
+		\begin{itemize}
+			\item Un encodeur quadrature utilise deux voies déphasées afin de mesurer le déplacement et son sens.
+			\item Les fronts montants et descendants constituent les événements qui font évoluer le compteur en mode encodeur.
+			\item Un même périphérique timer peut servir à des fonctions très différentes selon sa configuration : PWM, base de temps ou interface encodeur.
+			\item \texttt{CCMR1} choisit comment les canaux sont utilisés, \texttt{SMCR} sélectionne le mode encodeur, \texttt{CCER} règle la polarité et \texttt{CR1.CEN} démarre le compteur.
+			\item Le processeur configure le timer, mais le comptage des fronts est ensuite effectué matériellement.
+			\item Une position est une valeur cumulée de compteur, alors qu'une vitesse dépend de la variation de cette position pendant un intervalle de temps.
+			\item Une calibration expérimentale sur plusieurs tours réduit l'erreur liée au positionnement manuel.
+			\item Le signe de $\Delta CNT$ permet de conserver l'information de sens dans la vitesse.
+			\item Une vraie base de temps matérielle est nécessaire pour obtenir une mesure de vitesse fiable.
+			\item L'arithmétique entière 64 bits permet de réaliser des calculs précis sans dépendre immédiatement de la FPU.
+		\end{itemize}
+		
+		\vspace{0.3cm}
+		
+		\textbf{Résultat final :}
+		
+		\begin{center}
+			\fbox{\parbox{0.92\textwidth}{
+					\centering
+					Rotation mécanique
+					$\rightarrow$ Encodeur A/B
+					$\rightarrow$ TIM2
+					$\rightarrow$ \texttt{CNT}
+					$\rightarrow$ position / angle
+					\\[0.2cm]
+					\texttt{CNT} + TIM5
+					$\rightarrow$ $\Delta CNT / \Delta t$
+					$\rightarrow$ vitesse en tr/min
+			}}
+		\end{center}
+		
+		La STM32 mesure désormais automatiquement la position relative et le sens de rotation du moteur, puis calcule sa vitesse réelle à partir d'une base de temps matérielle indépendante.
+		
+		\vspace{0.3cm}
+		
+		\textbf{Apprentissage principal :}
+		
+		Le PWM de la séance précédente permettait de commander une action sans savoir exactement ce que le moteur faisait. L'encodeur ferme la chaîne de mesure : il transforme le mouvement mécanique réel en information numérique exploitable par le microcontrôleur.
+		
+		\vspace{0.3cm}
+		
+		\textbf{Prochaine étape :}
+		
+		Commencer la séance 6 avec le driver TB6612FNG afin de commander réellement le moteur en avant et en arrière avec GPIO + PWM, tout en conservant l'encodeur comme retour de mesure.
 		
 	\end{sessionbox}
 	
@@ -1977,9 +2281,167 @@
 	\end{warningbox}
 	\subsection*{Encodeurs}
 	
-	Les encodeurs produisent des impulsions lorsque le moteur tourne. Avec deux voies A et B déphasées, ils permettent de déterminer le sens de rotation ainsi que le déplacement relatif.
+	Un encodeur incrémental transforme une rotation mécanique en une suite de transitions numériques. Dans le projet, les motoréducteurs utilisent un encodeur en quadrature composé de deux voies, A et B, déphasées l'une par rapport à l'autre.
 	
-	En comptant les impulsions pendant une durée connue, le programme peut estimer la vitesse. En cumulant les impulsions, il peut estimer la position ou la distance parcourue.
+	\subsubsection*{Pourquoi deux voies ?}
+	
+	Avec une seule voie, il est possible de compter des impulsions et donc d'estimer un déplacement. Avec deux voies déphasées, l'ordre des transitions permet en plus de connaître le sens de rotation.
+	
+	Une rotation peut produire la séquence :
+	
+	\begin{center}
+		\texttt{00 $\rightarrow$ 10 $\rightarrow$ 11 $\rightarrow$ 01 $\rightarrow$ 00}
+	\end{center}
+	
+	Dans l'autre sens, l'ordre est inversé :
+	
+	\begin{center}
+		\texttt{00 $\rightarrow$ 01 $\rightarrow$ 11 $\rightarrow$ 10 $\rightarrow$ 00}
+	\end{center}
+	
+	Le sens n'est donc pas déduit de la valeur instantanée de A ou B prise séparément, mais de la succession des états des deux voies.
+	
+	\subsubsection*{Timer en mode encodeur}
+	
+	Sur STM32, un timer peut utiliser directement les deux entrées de capture comme interface encodeur. Dans la séance 5, les voies sont reliées à \texttt{TIM2\_CH1} et \texttt{TIM2\_CH2} :
+	
+	\begin{center}
+		\fbox{\parbox{0.86\textwidth}{
+				\centering
+				Voie A $\rightarrow$ PA0 / AF1 $\rightarrow$ TIM2\_CH1 / TI1\\
+				Voie B $\rightarrow$ PA1 / AF1 $\rightarrow$ TIM2\_CH2 / TI2\\[0.2cm]
+				TI1 + TI2 $\rightarrow$ logique quadrature $\rightarrow$ \texttt{TIM2\_CNT}
+		}}
+	\end{center}
+	
+	Les registres principaux utilisés sont :
+	
+	\begin{center}
+		\begin{tabular}{>{\bfseries}p{3.5cm}p{9.5cm}}
+			\toprule
+			Registre & Rôle \\
+			\midrule
+			\texttt{CCMR1} & Configure CH1 et CH2 comme entrées reliées à TI1 et TI2. \\
+			\texttt{CCER} & Définit notamment la polarité des deux entrées. \\
+			\texttt{SMCR} & Sélectionne le mode encodeur avec le champ \texttt{SMS}. \\
+			\texttt{CNT} & Contient la position relative courante sous forme de comptes. \\
+			\texttt{ARR} & Fixe la plage maximale du compteur. \\
+			\texttt{CR1} & Le bit \texttt{CEN} démarre ou arrête le compteur. \\
+			\bottomrule
+		\end{tabular}
+	\end{center}
+	
+	En mode encodeur, il faut retenir une différence fondamentale avec le PWM :
+	
+	\begin{center}
+		\begin{tabular}{>{\bfseries}p{4cm}p{8.5cm}}
+			\toprule
+			Utilisation du timer & Ce qui fait évoluer \texttt{CNT} \\
+			\midrule
+			PWM / base de temps & L'horloge du timer, éventuellement divisée par \texttt{PSC}. \\
+			Mode encodeur & Les transitions détectées sur les voies A et B. \\
+			\bottomrule
+		\end{tabular}
+	\end{center}
+	
+	Le processeur configure donc le périphérique une seule fois, puis le timer compte matériellement les transitions sans qu'une interruption logicielle soit nécessaire pour chaque front.
+	
+	\subsubsection*{Position, angle et calibration}
+	
+	La valeur brute de \texttt{CNT} représente des comptes, et non directement des degrés ou des tours. Il faut connaître le nombre de comptes correspondant à un tour complet de l'axe.
+	
+	Une calibration expérimentale sur trois séries de dix tours a donné une moyenne d'environ 3881,47 comptes par tour. La constante utilisée dans le projet est arrondie à :
+	
+	\begin{center}
+		\texttt{ENCODER\_COUNTS\_PER\_REV = 3881}
+	\end{center}
+	
+	Le nombre de tours cumulés vaut alors :
+	
+	\begin{center}
+		$N_{tours} = \frac{CNT}{3881}$
+	\end{center}
+	
+	et l'angle cumulé :
+	
+	\begin{center}
+		$\theta = \frac{CNT}{3881} \times 360^\circ$
+	\end{center}
+	
+	Cette position est relative au zéro choisi au démarrage. Une rotation dans le sens opposé produit des comptes négatifs lorsqu'ils sont interprétés côté logiciel avec un type signé.
+	
+	\subsubsection*{Vitesse à partir de la variation de position}
+	
+	Une valeur unique de \texttt{CNT} ne donne pas la vitesse. Il faut comparer deux lectures séparées dans le temps :
+	
+	\begin{center}
+		$\Delta CNT = CNT_2 - CNT_1$
+	\end{center}
+	
+	\begin{center}
+		$\Delta t = t_2 - t_1$
+	\end{center}
+	
+	Avec une base de temps exprimée en microsecondes, la vitesse en tours par minute est calculée par :
+	
+	\begin{center}
+		$RPM = \frac{\Delta CNT \times 60 \times 1\,000\,000}{3881 \times \Delta t_{\mu s}}$
+	\end{center}
+	
+	Le signe de $\Delta CNT$ est conservé : une vitesse positive et une vitesse négative correspondent donc aux deux sens de rotation.
+	
+	\subsubsection*{Base de temps indépendante avec TIM5}
+	
+	La temporisation par boucle utilisée lors des premiers tests n'est pas suffisamment précise pour mesurer une vitesse. TIM5 est donc configuré comme chronomètre matériel.
+	
+	Avec une horloge de 16 MHz et \texttt{PSC = 15} :
+	
+	\begin{center}
+		\texttt{16 MHz / (15 + 1) = 1 MHz}
+	\end{center}
+	
+	Ainsi :
+	
+	\begin{center}
+		\texttt{1 tick TIM5 = 1 \textmu s}
+	\end{center}
+	
+	TIM2 mesure donc le \textbf{mouvement}, tandis que TIM5 mesure le \textbf{temps}. La vitesse est obtenue en combinant les deux informations.
+	
+	\begin{center}
+		\fbox{\parbox{0.88\textwidth}{
+				\centering
+				TIM2 $\rightarrow$ $\Delta CNT$ \hspace{1cm}
+				TIM5 $\rightarrow$ $\Delta t$\\[0.2cm]
+				$\Delta CNT + \Delta t \rightarrow$ vitesse en tr/min
+		}}
+	\end{center}
+	
+	\subsubsection*{Distance et vitesse linéaire avec une roue}
+	
+	Si une roue de diamètre $D$ est montée sur l'axe, sa circonférence vaut :
+	
+	\begin{center}
+		$C = \pi D$
+	\end{center}
+	
+	Sans glissement, chaque tour complet déplace théoriquement le robot d'une circonférence. La distance parcourue peut donc être estimée par :
+	
+	\begin{center}
+		$d = \frac{CNT}{3881} \times \pi D$
+	\end{center}
+	
+	Si $D$ est exprimé en mètres, la vitesse linéaire en mètres par seconde est :
+	
+	\begin{center}
+		$v = \frac{\pi D \times RPM}{60}$
+	\end{center}
+	
+	Le facteur 60 est nécessaire parce que les RPM sont exprimés en tours par minute. Ces relations serviront plus tard pour l'odométrie et l'estimation du déplacement du robot.
+	
+	\begin{warningbox}
+		La conversion encodeur $\rightarrow$ distance suppose que la roue roule sans glisser. Sur un robot réel, le patinage, la déformation des pneus et les différences entre les deux moteurs peuvent introduire une erreur d'odométrie. Une calibration expérimentale de chaque roue sera donc préférable lors de l'intégration finale.
+	\end{warningbox}
 	
 	\subsection*{Filtre complémentaire}
 	

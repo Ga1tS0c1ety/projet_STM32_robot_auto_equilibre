@@ -35,6 +35,9 @@
 #define TIM2_CNT           (*(volatile uint32_t *)(TIM2_BASE + 0x24UL))
 #define TIM2_ARR           (*(volatile uint32_t *)(TIM2_BASE + 0x2CUL))
 
+#define ENCODER_COUNTS_PER_REV       3881LL
+#define MICROSECONDS_PER_SECOND      1000000LL
+#define SECONDS_PER_MINUTE           60LL
 
 void encoder_init(void)
 {
@@ -117,4 +120,23 @@ void encoder_init(void)
 int32_t encoder_get_count(void)
 {
     return (int32_t)TIM2_CNT;
+}
+
+int32_t encoder_compute_rpm(int32_t delta_count, uint32_t delta_us)
+{
+    if (delta_us == 0U)
+    {
+        return 0;
+    }
+
+    int64_t numerateur =
+        (int64_t)delta_count
+        * SECONDS_PER_MINUTE
+        * MICROSECONDS_PER_SECOND;
+
+    int64_t denominateur =
+        ENCODER_COUNTS_PER_REV
+        * (int64_t)delta_us;
+
+    return (int32_t)(numerateur / denominateur);
 }
