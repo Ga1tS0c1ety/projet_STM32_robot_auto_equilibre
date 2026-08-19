@@ -107,6 +107,52 @@ static void test_pwm_mesure(uint32_t duty)
     attendre_ms(1000);
 }
 
+static void mesurer_vitesse(uint32_t duree_ms)
+{
+    int32_t position_precedente;
+    int32_t position_actuelle;
+    int32_t delta_count;
+    int32_t rpm;
+
+    uint32_t temps_precedent;
+    uint32_t temps_actuel;
+    uint32_t delta_us;
+    uint32_t debut;
+
+    position_precedente = encoder_get_count();
+    temps_precedent = timebase_get_us();
+    debut = temps_precedent;
+
+    while ((uint32_t)(timebase_get_us() - debut) < (duree_ms * 1000U))
+    {
+        temps_actuel = timebase_get_us();
+
+        if ((uint32_t)(temps_actuel - temps_precedent) >= 100000U)
+        {
+            position_actuelle = encoder_get_count();
+
+            delta_count = position_actuelle - position_precedente;
+            delta_us = temps_actuel - temps_precedent;
+
+            rpm = encoder_compute_rpm(delta_count, delta_us);
+
+            uart_send_string("Position : ");
+            uart_send_int32(position_actuelle);
+
+            uart_send_string(" | Delta : ");
+            uart_send_int32(delta_count);
+
+            uart_send_string(" | Vitesse : ");
+            uart_send_int32(rpm);
+
+            uart_send_string(" tr/min\r\n");
+
+            position_precedente = position_actuelle;
+            temps_precedent = temps_actuel;
+        }
+    }
+}
+
 int main(void)
 {
     uart_init();
@@ -116,13 +162,50 @@ int main(void)
     timebase_init();
 
     uart_send_string("Demarrage du robot\r\n");
-    uart_send_string("Test PWM + Encodeur\r\n");
+    uart_send_string("Test sens moteur + encodeur\r\n\r\n");
 
     while (1)
     {
-        test_pwm_mesure(20);
-        test_pwm_mesure(40);
-        test_pwm_mesure(60);
-        test_pwm_mesure(80);
+        /*
+         * AVANT
+         */
+        uart_send_string("=== AVANT - PWM 60 % ===\r\n");
+
+        moteur_avant();
+        pwm_set_duty(60);
+
+        mesurer_vitesse(3000);
+
+        /*
+         * ARRET
+         */
+        moteur_arreter();
+        pwm_set_duty(0);
+
+        uart_send_string("Arret\r\n\r\n");
+
+        attendre_ms(1500);
+
+
+        /*
+         * ARRIERE
+         */
+        uart_send_string("=== ARRIERE - PWM 60 % ===\r\n");
+
+        moteur_arriere();
+        pwm_set_duty(60);
+
+        mesurer_vitesse(3000);
+
+        /*
+         * ARRET
+         */
+        moteur_arreter();
+        pwm_set_duty(0);
+
+        uart_send_string("Arret\r\n");
+        uart_send_string("------------------------\r\n\r\n");
+
+        attendre_ms(3000);
     }
 }
