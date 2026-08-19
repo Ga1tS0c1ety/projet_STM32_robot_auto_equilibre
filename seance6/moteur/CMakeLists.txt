@@ -33,6 +33,8 @@ target_sources(${PROJECT_NAME} PRIVATE
   # User defined sources
   Src/uart.c
   Src/pwm.c
+  Src/encoder.c
+  Src/timebase.c
   Src/moteur.c
 )
 
