@@ -1398,41 +1398,300 @@
 	
 	\begin{sessionbox}
 		
-		\textbf{Objectif :} Contrôler la direction et le sens des moteurs.
+		\textbf{Date :} Août 2026
 		
 		\vspace{0.3cm}
 		
-		\textbf{Technologie :} GPIO + PWM + Driver moteur TB6612FNG.
+		\textbf{Objectif :}
+		
+		Commander réellement un motoréducteur avec le driver TB6612FNG, contrôler son sens de rotation et sa puissance avec GPIO + PWM, puis vérifier la cohérence de la commande à l'aide de l'encodeur.
 		
 		\vspace{0.3cm}
 		
-		\textbf{Réalisation :}
+		\textbf{Objectif pédagogique :}
+		
+		Comprendre le rôle d'un pont en H comme interface entre la logique 3,3 V de la STM32 et la puissance nécessaire au moteur. La séance vise aussi à séparer clairement trois fonctions : l'activation du driver avec \texttt{STBY}, le choix du sens avec \texttt{AIN1/AIN2} et le réglage de la commande moteur avec \texttt{PWMA}. Enfin, les mesures de la séance 5 sont réutilisées afin de comparer la commande PWM au mouvement réellement observé.
+		
+		\vspace{0.3cm}
+		
+		\textbf{Configuration retenue :}
 		
 		\begin{itemize}
-			\item inversion du sens de rotation ;
-			\item test avant/arrière ;
-			\item validation du pont en H TB6612FNG.
+			\item driver moteur : \texttt{TB6612FNG}, canal A ;
+			\item \texttt{PC0} $\rightarrow$ \texttt{AIN1} ;
+			\item \texttt{PC1} $\rightarrow$ \texttt{AIN2} ;
+			\item \texttt{PC2} $\rightarrow$ \texttt{STBY} ;
+			\item \texttt{PA6 / TIM3\_CH1} $\rightarrow$ \texttt{PWMA} ;
+			\item \texttt{AO1/AO2} $\rightarrow$ les deux fils de puissance du moteur ;
+			\item logique du TB6612FNG : 3,3 V depuis la STM32 ;
+			\item alimentation moteur : environ 5 V obtenus avec le convertisseur Buck LM2596 ;
+			\item masse commune entre STM32, TB6612FNG, Buck et encodeur ;
+			\item encodeur conservé sur \texttt{PA0 / TIM2\_CH1} et \texttt{PA1 / TIM2\_CH2} ;
+			\item TIM5 conservé comme base de temps pour le calcul de vitesse.
 		\end{itemize}
 		
 		\vspace{0.3cm}
 		
-		\textbf{Problème possible :}
+		\textbf{Préparation de l'alimentation :}
 		
-		Le moteur tourne dans le mauvais sens.
+		La batterie LiPo 2S ne doit pas être utilisée directement comme tension de test du moteur. Le convertisseur Buck LM2596 a donc été placé entre la batterie et l'entrée \texttt{VM} du TB6612FNG. La tension de sortie a été réglée au multimètre à environ 5,0 V avant de connecter le driver.
+		
+		Le potentiomètre du module étant multi-tours, plusieurs rotations ont été nécessaires avant d'observer une variation visible de la tension. Cette étape a montré l'importance de toujours régler et vérifier la sortie d'un convertisseur avant de l'appliquer au circuit de puissance.
+		
+		\begin{center}
+			\fbox{\parbox{0.90\textwidth}{
+					\centering
+					LiPo 2S
+					$\rightarrow$ Buck LM2596 réglé à 5 V
+					$\rightarrow$ \texttt{VM} du TB6612FNG
+					$\rightarrow$ \texttt{AO1/AO2}
+					$\rightarrow$ moteur
+			}}
+		\end{center}
+		
+		La logique reste alimentée séparément :
+		
+		\begin{center}
+			\texttt{STM32 3,3 V $\rightarrow$ VCC du TB6612FNG}
+		\end{center}
+		
+		Les masses de la STM32, du driver et de l'alimentation moteur sont reliées afin que tous les niveaux logiques utilisent la même référence électrique.
 		
 		\vspace{0.3cm}
 		
-		\textbf{Solution :}
+		\textbf{Principe de commande du canal A :}
 		
-		Inversion des broches de direction IN1/IN2 ou correction logicielle du signe de commande.
+		Le sens est déterminé par les entrées \texttt{AIN1} et \texttt{AIN2}, tandis que \texttt{PWMA} reçoit le PWM produit pendant la séance 4. La broche \texttt{STBY} doit rester à l'état haut pour autoriser le fonctionnement du driver.
+		
+		\begin{center}
+			\begin{tabular}{>{\bfseries}p{3cm}p{3cm}p{6cm}}
+				\toprule
+				\texttt{AIN1} & \texttt{AIN2} & Utilisation dans le projet \\
+				\midrule
+				1 & 0 & Rotation dans le sens appelé \texttt{AVANT}. \\
+				0 & 1 & Rotation dans le sens appelé \texttt{ARRIERE}. \\
+				0 & 0 & État utilisé lors de l'arrêt logiciel. \\
+				\bottomrule
+			\end{tabular}
+		\end{center}
+		
+		Le rapport cyclique de \texttt{PWMA} ne choisit donc pas le sens : il règle la commande appliquée au moteur. Les GPIO \texttt{PC0}, \texttt{PC1} et \texttt{PC2} sont configurés en sorties \textit{push-pull}, car la STM32 doit imposer directement des niveaux logiques bas ou hauts au driver.
 		
 		\vspace{0.3cm}
 		
-		\textbf{Apprentissage :}
+		\textbf{Organisation logicielle :}
 		
-		Un moteur ne se contrôle pas seulement en vitesse, mais aussi en direction.
+		Un pilote moteur séparé a été créé afin de ne pas mélanger la logique de direction avec la génération PWM :
+		
+		\begin{center}
+			\begin{tabular}{>{\bfseries}p{4cm}p{9cm}}
+				\toprule
+				Fichier & Rôle \\
+				\midrule
+				\texttt{Inc/moteur.h} & Interface publique du pilote moteur. \\
+				\texttt{Src/moteur.c} & Configuration de GPIOC et commande de \texttt{AIN1}, \texttt{AIN2} et \texttt{STBY}. \\
+				\texttt{Inc/pwm.h / Src/pwm.c} & Génération du PWM sur \texttt{PA6 / TIM3\_CH1}. \\
+				\texttt{Inc/encoder.h / Src/encoder.c} & Lecture de la position et calcul de la vitesse avec TIM2. \\
+				\texttt{Inc/timebase.h / Src/timebase.c} & Base de temps TIM5 utilisée pour les mesures. \\
+				\texttt{Src/main.c} & Séquences de test, affichage UART et comparaison PWM / vitesse. \\
+				\bottomrule
+			\end{tabular}
+		\end{center}
+		
+		Les principales fonctions ajoutées sont :
+		
+		\begin{itemize}
+			\item \texttt{moteur\_init()} ;
+			\item \texttt{moteur\_avant()} ;
+			\item \texttt{moteur\_arriere()} ;
+			\item \texttt{moteur\_arreter()} ;
+			\item \texttt{moteur\_activer()} ;
+			\item \texttt{moteur\_desactiver()}.
+		\end{itemize}
+		
+		La séparation retenue est donc :
+		
+		\begin{center}
+			\fbox{\parbox{0.90\textwidth}{
+					\centering
+					\texttt{moteur.c} $\rightarrow$ direction + activation
+					\qquad
+					\texttt{pwm.c} $\rightarrow$ commande PWM
+			}}
+		\end{center}
+		
+		Le programme principal peut ainsi demander un sens avec \texttt{moteur\_avant()} ou \texttt{moteur\_arriere()}, puis régler le rapport cyclique avec \texttt{pwm\_set\_duty()} sans manipuler directement les registres.
+		
+		\vspace{0.3cm}
+		
+		\textbf{Premier test fonctionnel :}
+		
+		Un premier essai a été réalisé avec une commande de 30~\%. Le moteur a démarré correctement, validant la chaîne complète :
+		
+		\begin{center}
+			\fbox{\parbox{0.90\textwidth}{
+					\centering
+					STM32
+					$\rightarrow$ GPIO de direction + PWM
+					$\rightarrow$ TB6612FNG
+					$\rightarrow$ moteur
+			}}
+		\end{center}
+		
+		Une séquence automatique \texttt{AVANT $\rightarrow$ ARRET $\rightarrow$ ARRIERE $\rightarrow$ ARRET} a ensuite confirmé l'inversion correcte du pont en H.
+		
+		\vspace{0.3cm}
+		
+		\textbf{Test de variation du PWM :}
+		
+		Le moteur a ensuite été testé successivement à 20~\%, 40~\%, 60~\% et 80~\%. À l'observation, sa vitesse augmente progressivement lorsque le rapport cyclique augmente.
+		
+		L'encodeur de la séance 5 a ensuite été réintégré afin de mesurer cette évolution. Pour le premier moteur, les régimes établis représentatifs obtenus sont :
+		
+		\begin{center}
+			\begin{tabular}{>{\bfseries}p{3.5cm}p{4cm}p{4.5cm}}
+				\toprule
+				PWM & $\Delta CNT$ sur environ 100 ms & Vitesse stabilisée \\
+				\midrule
+				20~\% & environ -133 à -134 & environ -20 tr/min \\
+				40~\% & environ -306 à -308 & environ -47 tr/min \\
+				60~\% & environ -471 à -475 & environ -72 à -73 tr/min \\
+				80~\% & environ -621 à -628 & environ -96 à -97 tr/min \\
+				\bottomrule
+			\end{tabular}
+		\end{center}
+		
+		Ces résultats montrent directement qu'une augmentation du rapport cyclique produit une augmentation de la valeur absolue de la vitesse mesurée. Ils montrent aussi que le rapport cyclique représente une commande électrique et non un pourcentage exact de la vitesse maximale.
+		
+		\vspace{0.3cm}
+		
+		\textbf{Observation de la réponse dynamique :}
+		
+		Les premières mesures de chaque essai montrent que le moteur n'atteint pas instantanément son régime établi. À 60~\%, par exemple, la vitesse a évolué progressivement d'environ -22 tr/min vers -70 tr/min. À 80~\%, elle a progressé d'environ -27 tr/min vers -96 tr/min.
+		
+		Cette montée progressive met en évidence l'inertie mécanique et le temps nécessaire au moteur pour atteindre sa vitesse de régime.
+		
+		\vspace{0.3cm}
+		
+		\textbf{Validation du sens avec l'encodeur :}
+		
+		Un essai complémentaire a été réalisé à PWM constant de 60~\% en inversant seulement \texttt{AIN1} et \texttt{AIN2}.
+		
+		Pour le moteur 1 :
+		
+		\begin{center}
+			\begin{tabular}{>{\bfseries}p{4cm}p{4cm}p{4cm}}
+				\toprule
+				Commande & Signe de $\Delta CNT$ & Vitesse stabilisée \\
+				\midrule
+				AVANT & négatif & environ -70 tr/min \\
+				ARRIERE & positif & environ +69 tr/min \\
+				\bottomrule
+			\end{tabular}
+		\end{center}
+		
+		Le moteur 2 a ensuite été testé de la même manière :
+		
+		\begin{center}
+			\begin{tabular}{>{\bfseries}p{4cm}p{4cm}p{4cm}}
+				\toprule
+				Commande & Signe de $\Delta CNT$ & Vitesse stabilisée \\
+				\midrule
+				AVANT & négatif & environ -67 à -68 tr/min \\
+				ARRIERE & positif & environ +66 à +67 tr/min \\
+				\bottomrule
+			\end{tabular}
+		\end{center}
+		
+		Dans le câblage actuel, la convention \texttt{AVANT} correspond donc à une vitesse encodeur négative et \texttt{ARRIERE} à une vitesse positive. Cette convention est cohérente sur les deux moteurs et peut être conservée ou corrigée plus tard au niveau logiciel selon la convention choisie pour le robot.
+		
+		\vspace{0.3cm}
+		
+		\textbf{Vérification du calcul de vitesse :}
+		
+		À 60~\%, une valeur typique du moteur 1 est d'environ $\Delta CNT = -458$ sur 0,1 s. Avec 3881 comptes par tour :
+		
+		\begin{center}
+			$RPM \approx \frac{-458 \times 60}{3881 \times 0,1} \approx -70,8~\mathrm{tr/min}$
+		\end{center}
+		
+		La valeur calculée est cohérente avec l'affichage UART, proche de -70 tr/min. La chaîne encodeur + TIM2 + TIM5 + calcul entier reste donc valide lorsque le moteur est réellement piloté par le TB6612FNG.
+		
+		\vspace{0.3cm}
+		
+		\textbf{Problèmes et observations rencontrés :}
+		
+		\begin{itemize}
+			\item Le réglage du Buck LM2596 semblait initialement ne pas réagir ; son potentiomètre multi-tours nécessitait simplement plusieurs rotations avant de faire varier sensiblement la tension.
+			\item Le signe de la vitesse est négatif pour la commande appelée \texttt{AVANT}. Ce comportement n'est pas une erreur : il dépend de l'ordre des voies A/B et de la convention choisie.
+			\item Après la suppression de la commande, la position encodeur peut encore évoluer pendant un court instant : le moteur possède une inertie et ne s'immobilise pas instantanément.
+			\item Les deux moteurs ne donnent pas exactement la même vitesse pour un même rapport cyclique, ce qui est normal pour des actionneurs réels et sera traité plus tard lors des boucles de contrôle.
+		\end{itemize}
+		
+		\vspace{0.3cm}
+		
+		\textbf{Notions comprises :}
+		
+		\begin{itemize}
+			\item La STM32 fournit les signaux de commande, tandis que le TB6612FNG commute l'énergie provenant de l'alimentation moteur.
+			\item \texttt{VCC} alimente la logique du driver alors que \texttt{VM} alimente l'étage de puissance moteur.
+			\item Une masse commune est nécessaire pour donner une référence électrique commune aux signaux de commande.
+			\item \texttt{STBY} active ou désactive le driver.
+			\item \texttt{AIN1/AIN2} déterminent le sens de rotation.
+			\item \texttt{PWMA} reçoit le signal PWM et règle la commande appliquée au moteur.
+			\item Les broches de direction sont utilisées en \textit{push-pull}, contrairement aux lignes I2C configurées en \textit{open-drain}.
+			\item Le PWM demandé et la vitesse réelle sont deux grandeurs différentes.
+			\item L'encodeur permet d'observer la réponse réelle du moteur et de conserver l'information de sens grâce au signe de $\Delta CNT$.
+			\item La vitesse augmente progressivement au démarrage : le moteur possède une dynamique et une inertie.
+			\item Deux moteurs identiques peuvent présenter de petites différences de vitesse pour une même commande.
+		\end{itemize}
+		
+		\vspace{0.3cm}
+		
+		\textbf{Résultat final :}
+		
+		\begin{center}
+			\fbox{\parbox{0.92\textwidth}{
+					\centering
+					\textbf{Commande :}
+					STM32
+					$\rightarrow$ \texttt{PC0/PC1/PC2} + \texttt{PA6/TIM3}
+					$\rightarrow$ TB6612FNG
+					$\rightarrow$ moteur
+					\\[0.2cm]
+					\textbf{Mesure :}
+					moteur
+					$\rightarrow$ encodeur A/B
+					$\rightarrow$ TIM2
+					$\rightarrow$ $\Delta CNT$
+					\quad + \quad
+					TIM5 $\rightarrow \Delta t$
+					$\rightarrow$ vitesse
+			}}
+		\end{center}
+		
+		La STM32 sait désormais commander le sens et le niveau de commande d'un moteur à travers le TB6612FNG tout en mesurant simultanément le mouvement réellement obtenu avec l'encodeur.
+		
+		\vspace{0.3cm}
+		
+		\textbf{Apprentissage principal :}
+		
+		Le PWM indique ce que le microcontrôleur demande au moteur ; l'encodeur indique ce que le moteur fait réellement. La séance 6 réunit pour la première fois la chaîne d'action et la chaîne de mesure, sans encore fermer la boucle de contrôle.
+		
+		\vspace{0.3cm}
+		
+		\textbf{Limite volontaire de la séance :}
+		
+		Aucune régulation de vitesse n'est réalisée ici. Les écarts entre moteurs, la compensation automatique et la boucle fermée seront étudiés plus tard dans le projet.
+		
+		\vspace{0.3cm}
+		
+		\textbf{Prochaine étape :}
+		
+		Commencer la séance 7 avec la lecture des données brutes de l'accéléromètre et du gyroscope du MPU6050 via I2C, puis afficher les mesures sur l'UART.
 		
 	\end{sessionbox}
+	
 	
 	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 	\subsection*{Séance 7 -- Lecture IMU brute}
@@ -1826,10 +2085,15 @@
 	
 	\begin{componentbox}
 		\begin{itemize}
-			\item Double pont en H.
-			\item Contrôle de deux moteurs DC.
-			\item Commande par GPIO et PWM.
-			\item Alimentation moteur séparée de la logique.
+			\item Double pont en H permettant de commander deux moteurs DC.
+			\item Interface de puissance entre les signaux logiques de la STM32 et les moteurs.
+			\item Alimentation logique \texttt{VCC} utilisée à 3,3 V dans le projet.
+			\item Alimentation moteur \texttt{VM} séparée de la logique.
+			\item Entrées \texttt{AIN1/AIN2} utilisées pour sélectionner le sens du moteur A.
+			\item Entrée \texttt{PWMA} reliée à \texttt{PA6 / TIM3\_CH1} pour recevoir le signal PWM.
+			\item Entrée \texttt{STBY} utilisée pour activer ou désactiver le driver.
+			\item Sorties \texttt{AO1/AO2} reliées aux deux fils de puissance du moteur.
+			\item Lors de la séance 6, le canal A a été validé en marche avant, marche arrière, arrêt et variation de PWM.
 		\end{itemize}
 	\end{componentbox}
 	
@@ -1837,12 +2101,16 @@
 	
 	\begin{componentbox}
 		\begin{itemize}
-			\item Batterie LiPo 2S 7,4 V.
-			\item Convertisseur Buck LM2596 pour obtenir une tension logique stable.
+			\item Batterie LiPo 2S 7,4 V comme source d'énergie principale.
+			\item Convertisseur Buck LM2596 utilisé pendant les essais pour abaisser la tension destinée au moteur à environ 5 V.
+			\item Sortie du Buck reliée à \texttt{VM} du TB6612FNG pour l'étage de puissance moteur.
+			\item Alimentation logique du TB6612FNG fournie en 3,3 V depuis la STM32.
+			\item Masse commune entre STM32, TB6612FNG, Buck et encodeurs.
 			\item Interrupteur ON/OFF sur la ligne positive.
 			\item Connecteurs Deans pour la puissance.
 		\end{itemize}
 	\end{componentbox}
+	
 	
 	% ================================
 	% CHAPITRE 6
@@ -2260,21 +2528,131 @@
 	
 	\subsubsection*{PWM et commande moteur}
 	
-	Le PWM produit par la STM32 est un signal logique de commande. La broche \texttt{PA6} ne peut pas fournir directement le courant nécessaire à un moteur.
+	Le PWM produit par la STM32 est un signal logique de commande. La broche \texttt{PA6} ne fournit pas directement l'énergie nécessaire au moteur : elle transmet seulement l'information de commande au TB6612FNG.
 	
-	Dans une étape ultérieure, le signal sera envoyé à l'entrée PWM du TB6612FNG. Le driver utilisera alors l'alimentation moteur pour commuter le courant dans le moteur :
+	Depuis la séance 6, la chaîne réellement utilisée est :
 	
 	\begin{center}
-		\fbox{\parbox{0.82\textwidth}{
+		\fbox{\parbox{0.88\textwidth}{
 				\centering
-				STM32 / PWM logique
+				STM32 / \texttt{TIM3\_CH1} / PA6
+				$\rightarrow$ \texttt{PWMA}
 				$\rightarrow$ TB6612FNG
-				$\rightarrow$ alimentation de puissance
+				$\rightarrow$ alimentation moteur \texttt{VM}
+				$\rightarrow$ \texttt{AO1/AO2}
 				$\rightarrow$ moteur
 		}}
 	\end{center}
 	
-	La séance 4 valide uniquement la génération du signal PWM. Le contrôle du sens de rotation et l'intégration du pont en H seront réalisés pendant la séance 6.
+	Le rapport cyclique détermine le niveau de commande appliqué au moteur. Une augmentation du rapport cyclique entraîne généralement une augmentation de la vitesse, mais le pourcentage de PWM n'est pas égal au pourcentage de la vitesse maximale. Les frottements, la charge, l'alimentation, le réducteur et la dynamique mécanique influencent le résultat réel.
+	
+	Les essais de la séance 6 l'ont montré directement : pour le premier moteur, des commandes de 20~\%, 40~\%, 60~\% et 80~\% ont conduit respectivement à des vitesses stabilisées d'environ 20, 47, 72--73 et 96--97 tr/min en valeur absolue.
+	
+	Le PWM représente donc la \textbf{commande}, tandis que l'encodeur fournit la \textbf{mesure réelle}.
+	
+	\subsubsection*{Pont en H et TB6612FNG}
+	
+	Un moteur DC change de sens lorsque la polarité appliquée à ses deux bornes est inversée. Le pont en H du TB6612FNG réalise cette inversion électroniquement, sans modifier physiquement les fils du moteur.
+	
+	Pour le canal A utilisé pendant la séance 6 :
+	
+	\begin{itemize}
+		\item \texttt{AIN1} est reliée à \texttt{PC0} ;
+		\item \texttt{AIN2} est reliée à \texttt{PC1} ;
+		\item \texttt{STBY} est reliée à \texttt{PC2} ;
+		\item \texttt{PWMA} est reliée à \texttt{PA6 / TIM3\_CH1} ;
+		\item \texttt{AO1} et \texttt{AO2} sont reliées aux deux fils de puissance du moteur.
+	\end{itemize}
+	
+	La séparation fonctionnelle peut être résumée ainsi :
+	
+	\begin{center}
+		\begin{tabular}{>{\bfseries}p{4cm}p{8.5cm}}
+			\toprule
+			Signal & Fonction \\
+			\midrule
+			\texttt{STBY} & Active ou désactive le driver. \\
+			\texttt{AIN1/AIN2} & Déterminent le sens de rotation choisi. \\
+			\texttt{PWMA} & Reçoit le PWM et règle le niveau de commande du moteur. \\
+			\texttt{AO1/AO2} & Appliquent la puissance commutée aux deux bornes du moteur. \\
+			\bottomrule
+		\end{tabular}
+	\end{center}
+	
+	Dans la convention logicielle retenue :
+	
+	\begin{center}
+		\begin{tabular}{>{\bfseries}p{3cm}p{3cm}p{5.5cm}}
+			\toprule
+			\texttt{AIN1} & \texttt{AIN2} & Commande \\
+			\midrule
+			1 & 0 & \texttt{moteur\_avant()} \\
+			0 & 1 & \texttt{moteur\_arriere()} \\
+			0 & 0 & état utilisé par \texttt{moteur\_arreter()} \\
+			\bottomrule
+		\end{tabular}
+	\end{center}
+	
+	Le changement de sens ne nécessite donc pas de modifier le rapport cyclique. À PWM identique, inverser \texttt{AIN1} et \texttt{AIN2} inverse le sens du moteur.
+	
+	\subsubsection*{Alimentation logique, alimentation moteur et masse commune}
+	
+	Le TB6612FNG sépare la partie logique de la partie puissance :
+	
+	\begin{itemize}
+		\item \texttt{VCC} alimente la logique du driver et est reliée au 3,3 V de la STM32 ;
+		\item \texttt{VM} alimente l'étage moteur et a été alimentée à environ 5 V pendant les essais ;
+		\item les masses de la STM32, du driver et de l'alimentation moteur sont reliées ensemble.
+	\end{itemize}
+	
+	Le convertisseur Buck LM2596 a été utilisé pour abaisser la tension de la LiPo 2S avant de l'appliquer à \texttt{VM}. La sortie du Buck a d'abord été réglée au multimètre, sans moteur connecté, puis vérifiée à environ 5,0 V.
+	
+	La masse commune est indispensable : un niveau logique de 3,3 V n'a de sens pour le TB6612FNG que si la STM32 et le driver utilisent le même potentiel de référence.
+	
+	\begin{center}
+		\fbox{\parbox{0.90\textwidth}{
+				\centering
+				LiPo 2S
+				$\rightarrow$ Buck 5 V
+				$\rightarrow$ \texttt{VM}
+				$\rightarrow$ TB6612FNG
+				$\rightarrow$ moteur
+				\\[0.2cm]
+				STM32 3,3 V
+				$\rightarrow$ \texttt{VCC}
+				\qquad
+				GND STM32 = GND TB6612FNG = GND Buck
+		}}
+	\end{center}
+	
+	\subsubsection*{Commande et retour de mesure}
+	
+	La séance 6 réunit deux chaînes jusque-là étudiées séparément :
+	
+	\begin{center}
+		\fbox{\parbox{0.92\textwidth}{
+				\centering
+				\textbf{Action :}
+				STM32
+				$\rightarrow$ direction + PWM
+				$\rightarrow$ TB6612FNG
+				$\rightarrow$ moteur
+				\\[0.25cm]
+				\textbf{Mesure :}
+				moteur
+				$\rightarrow$ encodeur A/B
+				$\rightarrow$ TIM2
+				$\rightarrow$ position
+				\quad + \quad
+				TIM5 $\rightarrow \Delta t$
+				$\rightarrow$ vitesse
+		}}
+	\end{center}
+	
+	À PWM constant de 60~\%, l'inversion du sens du moteur provoque aussi l'inversion du signe de $\Delta CNT$ et donc du signe des RPM. Dans le câblage actuel, la commande \texttt{AVANT} produit un comptage négatif et la commande \texttt{ARRIERE} un comptage positif.
+	
+	Cette distinction entre commande et mesure est fondamentale pour la suite : une future boucle de régulation pourra comparer une consigne de vitesse à la vitesse réellement mesurée puis ajuster automatiquement le PWM. Cette régulation n'est cependant pas réalisée pendant la séance 6.
+	
 	
 	\begin{warningbox}
 		Une tension moyenne correcte au multimètre confirme le rapport cyclique de manière indirecte, mais elle ne suffit pas à vérifier précisément la fréquence, les fronts ou d'éventuelles déformations du signal. Une mesure à l'oscilloscope reste la validation la plus complète.
@@ -2478,10 +2856,51 @@
 			TB6612FNG & Interface de puissance entre STM32 et moteurs \\
 			Moteurs + encodeurs & Action mécanique + mesure du mouvement \\
 			LiPo 2S & Source d'énergie principale \\
-			Buck LM2596 & Conversion vers une tension logique stable \\
+			Buck LM2596 & Abaissement de la tension d'alimentation utilisée pour les moteurs pendant les essais \\
 			Châssis PVC expansé & Structure mécanique du robot \\
 			\bottomrule
 		\end{tabular}
+	\end{center}
+	
+	\subsection*{Chaîne moteur validée pendant la séance 6}
+	
+	La chaîne de commande d'un moteur est désormais validée expérimentalement :
+	
+	\begin{center}
+		\fbox{\parbox{0.92\textwidth}{
+				\centering
+				STM32
+				$\rightarrow$
+				\begin{tabular}{c}
+					\texttt{PC0/PC1} : direction\\
+					\texttt{PC2} : activation\\
+					\texttt{PA6/TIM3\_CH1} : PWM
+				\end{tabular}
+				$\rightarrow$ TB6612FNG
+				$\rightarrow$ moteur
+		}}
+	\end{center}
+	
+	L'alimentation de puissance utilisée pendant les essais suit le chemin :
+	
+	\begin{center}
+		\texttt{LiPo 2S $\rightarrow$ Buck $\approx$ 5 V $\rightarrow$ VM $\rightarrow$ TB6612FNG $\rightarrow$ moteur}
+	\end{center}
+	
+	Le retour de mesure reste indépendant :
+	
+	\begin{center}
+		\fbox{\parbox{0.88\textwidth}{
+				\centering
+				Moteur
+				$\rightarrow$ encodeur A/B
+				$\rightarrow$ PA0/PA1
+				$\rightarrow$ TIM2
+				$\rightarrow$ position
+				\\[0.2cm]
+				TIM2 + TIM5
+				$\rightarrow$ vitesse réelle en tr/min
+		}}
 	\end{center}
 	
 	\subsection*{Principe de fonctionnement}
@@ -2494,6 +2913,7 @@
 		\item Le driver TB6612FNG applique la puissance aux moteurs.
 		\item Les encodeurs mesurent le mouvement réel.
 	\end{itemize}
+	
 	
 	% ================================
 	% CHAPITRE 8
@@ -2523,6 +2943,16 @@
 	\textbf{Solution :} alimentation logique séparée via Buck Converter et masse commune propre.
 	
 	\textbf{Leçon :} l'alimentation est une partie critique du système.
+	
+	\subsection*{Erreur 4 -- Réglage du Buck qui semble ne pas réagir}
+	
+	\textbf{Observation :} pendant la séance 6, la tension de sortie du LM2596 semblait initialement ne pas varier lorsque le potentiomètre était tourné.
+	
+	\textbf{Cause :} le potentiomètre de réglage est multi-tours ; plusieurs rotations peuvent être nécessaires avant d'observer une variation sensible.
+	
+	\textbf{Solution :} régler le Buck sans moteur connecté, mesurer en permanence la tension entre \texttt{OUT+} et \texttt{OUT-}, puis arrêter le réglage lorsque la valeur recherchée est atteinte. Pour les essais de la séance 6, la sortie a été réglée à environ 5,0 V.
+	
+	\textbf{Leçon :} toujours vérifier au multimètre la sortie d'un convertisseur avant de connecter l'étage de puissance.
 	
 	% ================================
 	% CHAPITRE 9
@@ -2558,7 +2988,7 @@
 		Deux motoréducteurs avec encodeurs & Actionnement et mesure de mouvement \\
 		LiPo 2S 7,4 V -- 2200 mAh & Batterie principale \\
 		Chargeur LiPo avec équilibrage & Recharge sécurisée \\
-		Buck LM2596 & Conversion tension logique \\
+		Buck LM2596 & Abaissement de la tension pour l'alimentation moteur pendant les essais \\
 		Connecteurs Deans + câbles silicone & Distribution puissance \\
 		Interrupteur ON/OFF & Coupure alimentation \\
 		Multimètre & Diagnostic électrique \\
