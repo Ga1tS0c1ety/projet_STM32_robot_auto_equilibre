@@ -33,6 +33,7 @@ target_sources(${PROJECT_NAME} PRIVATE
   # User defined sources
   Src/uart.c
   Src/i2c.c
+  Src/mpu6050.c
 )
 
 # Add include directories
