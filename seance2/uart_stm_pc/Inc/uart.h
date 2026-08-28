@@ -22,4 +22,7 @@ void uart_send_string(const char *texte);
 /* Envoie un entier non signé en écriture décimale. */
 void uart_send_uint(uint32_t nombre);
 
+/* Envoie un entier signé en écriture décimale. */
+void uart_send_int(int32_t value);
+
 #endif /* UART_H */

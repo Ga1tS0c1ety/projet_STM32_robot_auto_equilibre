@@ -123,6 +123,8 @@ void uart_send_string(const char *texte)
     }
 }
 
+
+
 void uart_send_uint(uint32_t nombre)
 {
     /*
@@ -165,5 +167,34 @@ void uart_send_uint(uint32_t nombre)
     {
         position--;
         uart_send_char(chiffres[position]);
+    }
+}
+
+void uart_send_int(int32_t value)
+{
+    char buffer[12];
+    int i = 0;
+
+    if (value == 0)
+    {
+        uart_send_char('0');
+        return;
+    }
+
+    if (value < 0)
+    {
+        uart_send_char('-');
+        value = -value;
+    }
+
+    while (value > 0)
+    {
+        buffer[i++] = '0' + (value % 10);
+        value /= 10;
+    }
+
+    while (i > 0)
+    {
+        uart_send_char(buffer[--i]);
     }
 }

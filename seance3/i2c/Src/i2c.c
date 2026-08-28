@@ -519,3 +519,407 @@ void i2c1_init(void)
      */
     i2c1_enable();
 }
+
+//POUR LA SEANCE 7 : LECTURE DU MPU6050
+
+uint32_t i2c1_write_register(uint8_t adresse_7_bits,
+                             uint8_t registre,
+                             uint8_t valeur)
+{
+    uint32_t timeout;
+
+    /*
+     * 1. Attendre que le bus soit libre.
+     */
+    timeout = I2C_TIMEOUT;
+
+    while ((I2C1_SR2 & I2C_SR2_BUSY) && (timeout > 0))
+    {
+        timeout--;
+    }
+
+    if (timeout == 0)
+    {
+        return 1;
+    }
+
+    /*
+     * 2. Générer START.
+     */
+    I2C1_CR1 |= I2C_CR1_START;
+
+    timeout = I2C_TIMEOUT;
+
+    while (!(I2C1_SR1 & I2C_SR1_SB) && (timeout > 0))
+    {
+        timeout--;
+    }
+
+    if (timeout == 0)
+    {
+        return 2;
+    }
+
+    /*
+     * 3. Envoyer l'adresse du périphérique
+     * en écriture : R/W = 0.
+     */
+    I2C1_DR = ((uint32_t)adresse_7_bits << 1);
+
+    timeout = I2C_TIMEOUT;
+
+    while (!(I2C1_SR1 & (I2C_SR1_ADDR | I2C_SR1_AF))
+           && (timeout > 0))
+    {
+        timeout--;
+    }
+
+    if (timeout == 0)
+    {
+        I2C1_CR1 |= I2C_CR1_STOP;
+        return 3;
+    }
+
+    if (I2C1_SR1 & I2C_SR1_AF)
+    {
+        I2C1_SR1 &= ~I2C_SR1_AF;
+        I2C1_CR1 |= I2C_CR1_STOP;
+        return 4;
+    }
+
+    /*
+     * Effacer ADDR :
+     * lecture de SR1 puis SR2.
+     */
+    (void)I2C1_SR1;
+    (void)I2C1_SR2;
+
+    /*
+     * 4. Attendre que DR soit disponible.
+     */
+    timeout = I2C_TIMEOUT;
+
+    while (!(I2C1_SR1 & I2C_SR1_TXE) && (timeout > 0))
+    {
+        timeout--;
+    }
+
+    if (timeout == 0)
+    {
+        I2C1_CR1 |= I2C_CR1_STOP;
+        return 5;
+    }
+
+    /*
+     * 5. Envoyer l'adresse interne du registre.
+     */
+    I2C1_DR = registre;
+
+    timeout = I2C_TIMEOUT;
+
+    while (!(I2C1_SR1 & I2C_SR1_TXE) && (timeout > 0))
+    {
+        timeout--;
+    }
+
+    if (timeout == 0)
+    {
+        I2C1_CR1 |= I2C_CR1_STOP;
+        return 6;
+    }
+
+    /*
+     * 6. Envoyer la valeur à écrire.
+     */
+    I2C1_DR = valeur;
+
+    /*
+     * 7. Attendre la fin complète du transfert.
+     */
+    timeout = I2C_TIMEOUT;
+
+    while (!(I2C1_SR1 & I2C_SR1_BTF) && (timeout > 0))
+    {
+        timeout--;
+    }
+
+    if (timeout == 0)
+    {
+        I2C1_CR1 |= I2C_CR1_STOP;
+        return 7;
+    }
+
+    /*
+     * 8. Terminer la transaction.
+     */
+    I2C1_CR1 |= I2C_CR1_STOP;
+
+    return 0;
+}
+
+uint32_t i2c1_read_registers(uint8_t adresse_7_bits,
+                             uint8_t registre_depart,
+                             uint8_t *donnees,
+                             uint32_t nombre_octets)
+{
+    uint32_t timeout;
+    uint32_t index = 0;
+
+    /*
+     * Cette fonction traite pour l'instant
+     * les lectures d'au moins 3 octets.
+     */
+    if ((donnees == 0) || (nombre_octets < 3U))
+    {
+        return 1;
+    }
+
+    /*
+     * 1. Attendre que le bus soit libre.
+     */
+    timeout = I2C_TIMEOUT;
+
+    while ((I2C1_SR2 & I2C_SR2_BUSY) && (timeout > 0))
+    {
+        timeout--;
+    }
+
+    if (timeout == 0)
+    {
+        return 2;
+    }
+
+    /*
+     * 2. Générer START.
+     */
+    I2C1_CR1 |= I2C_CR1_START;
+
+    timeout = I2C_TIMEOUT;
+
+    while (!(I2C1_SR1 & I2C_SR1_SB) && (timeout > 0))
+    {
+        timeout--;
+    }
+
+    if (timeout == 0)
+    {
+        return 3;
+    }
+
+    /*
+     * 3. Envoyer l'adresse du périphérique
+     * en écriture.
+     */
+    I2C1_DR = ((uint32_t)adresse_7_bits << 1);
+
+    timeout = I2C_TIMEOUT;
+
+    while (!(I2C1_SR1 & (I2C_SR1_ADDR | I2C_SR1_AF))
+           && (timeout > 0))
+    {
+        timeout--;
+    }
+
+    if (timeout == 0)
+    {
+        I2C1_CR1 |= I2C_CR1_STOP;
+        return 4;
+    }
+
+    if (I2C1_SR1 & I2C_SR1_AF)
+    {
+        I2C1_SR1 &= ~I2C_SR1_AF;
+        I2C1_CR1 |= I2C_CR1_STOP;
+        return 5;
+    }
+
+    /*
+     * Effacer ADDR.
+     */
+    (void)I2C1_SR1;
+    (void)I2C1_SR2;
+
+    /*
+     * 4. Attendre que DR soit disponible.
+     */
+    timeout = I2C_TIMEOUT;
+
+    while (!(I2C1_SR1 & I2C_SR1_TXE) && (timeout > 0))
+    {
+        timeout--;
+    }
+
+    if (timeout == 0)
+    {
+        I2C1_CR1 |= I2C_CR1_STOP;
+        return 6;
+    }
+
+    /*
+     * 5. Envoyer l'adresse du premier registre.
+     */
+    I2C1_DR = registre_depart;
+
+    timeout = I2C_TIMEOUT;
+
+    while (!(I2C1_SR1 & I2C_SR1_BTF) && (timeout > 0))
+    {
+        timeout--;
+    }
+
+    if (timeout == 0)
+    {
+        I2C1_CR1 |= I2C_CR1_STOP;
+        return 7;
+    }
+
+    /*
+     * 6. Générer un REPEATED START.
+     */
+    I2C1_CR1 |= I2C_CR1_START;
+
+    timeout = I2C_TIMEOUT;
+
+    while (!(I2C1_SR1 & I2C_SR1_SB) && (timeout > 0))
+    {
+        timeout--;
+    }
+
+    if (timeout == 0)
+    {
+        I2C1_CR1 |= I2C_CR1_STOP;
+        return 8;
+    }
+
+    /*
+     * 7. Envoyer l'adresse du périphérique
+     * en lecture : R/W = 1.
+     */
+    I2C1_DR = ((uint32_t)adresse_7_bits << 1) | 1UL;
+
+    timeout = I2C_TIMEOUT;
+
+    while (!(I2C1_SR1 & (I2C_SR1_ADDR | I2C_SR1_AF))
+           && (timeout > 0))
+    {
+        timeout--;
+    }
+
+    if (timeout == 0)
+    {
+        I2C1_CR1 |= I2C_CR1_STOP;
+        return 9;
+    }
+
+    if (I2C1_SR1 & I2C_SR1_AF)
+    {
+        I2C1_SR1 &= ~I2C_SR1_AF;
+        I2C1_CR1 |= I2C_CR1_STOP;
+        return 10;
+    }
+
+    /*
+     * Nous voulons recevoir plusieurs octets.
+     */
+    I2C1_CR1 |= I2C_CR1_ACK;
+
+    /*
+     * Effacer ADDR.
+     */
+    (void)I2C1_SR1;
+    (void)I2C1_SR2;
+
+    /*
+     * 8. Lire normalement jusqu'à ce
+     * qu'il ne reste plus que 3 octets.
+     */
+    while ((nombre_octets - index) > 3U)
+    {
+        timeout = I2C_TIMEOUT;
+
+        while (!(I2C1_SR1 & I2C_SR1_RXNE)
+               && (timeout > 0))
+        {
+            timeout--;
+        }
+
+        if (timeout == 0)
+        {
+            I2C1_CR1 |= I2C_CR1_STOP;
+            return 11;
+        }
+
+        donnees[index] = (uint8_t)I2C1_DR;
+        index++;
+    }
+
+    /*
+     * 9. Il reste exactement 3 octets.
+     *
+     * Attendre que les deux premiers
+     * des trois derniers soient prêts.
+     */
+    timeout = I2C_TIMEOUT;
+
+    while (!(I2C1_SR1 & I2C_SR1_BTF) && (timeout > 0))
+    {
+        timeout--;
+    }
+
+    if (timeout == 0)
+    {
+        I2C1_CR1 |= I2C_CR1_STOP;
+        return 12;
+    }
+
+    /*
+     * Ne plus acquitter les octets suivants.
+     */
+    I2C1_CR1 &= ~I2C_CR1_ACK;
+
+    /*
+     * Lire le premier des trois derniers octets.
+     */
+    donnees[index] = (uint8_t)I2C1_DR;
+    index++;
+
+    /*
+     * Attendre que les deux derniers octets
+     * soient disponibles.
+     */
+    timeout = I2C_TIMEOUT;
+
+    while (!(I2C1_SR1 & I2C_SR1_BTF) && (timeout > 0))
+    {
+        timeout--;
+    }
+
+    if (timeout == 0)
+    {
+        I2C1_CR1 |= I2C_CR1_STOP;
+        I2C1_CR1 |= I2C_CR1_ACK;
+        return 13;
+    }
+
+    /*
+     * Les deux derniers octets sont engagés.
+     * Programmer STOP.
+     */
+    I2C1_CR1 |= I2C_CR1_STOP;
+
+    /*
+     * Lire les deux derniers octets.
+     */
+    donnees[index] = (uint8_t)I2C1_DR;
+    index++;
+
+    donnees[index] = (uint8_t)I2C1_DR;
+
+    /*
+     * Remettre ACK pour les prochaines transactions.
+     */
+    I2C1_CR1 |= I2C_CR1_ACK;
+
+    return 0;
+}
+
