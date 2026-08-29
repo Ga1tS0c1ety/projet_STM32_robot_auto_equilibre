@@ -1698,33 +1698,390 @@
 	
 	\begin{sessionbox}
 		
-		\textbf{Objectif :} Lire les données brutes de l'IMU.
+		\textbf{Date :} Août 2026
 		
 		\vspace{0.3cm}
 		
-		\textbf{Technologie :} I2C + MPU6050.
+		\textbf{Objectif :}
+		
+		Lire réellement les six axes du MPU6050 avec la STM32 Nucleo-F446RE, convertir les valeurs brutes de l'accéléromètre et du gyroscope en grandeurs physiques, puis réduire le biais statique du gyroscope par une calibration au démarrage.
 		
 		\vspace{0.3cm}
 		
-		\textbf{Réalisation :}
+		\textbf{Objectif pédagogique :}
+		
+		Passer d'une simple validation de communication I2C, réalisée pendant la séance 3 avec \texttt{WHO\_AM\_I}, à l'exploitation réelle des données du capteur. La séance vise à comprendre l'organisation des registres du MPU6050, la reconstruction de valeurs signées sur 16 bits, la lecture I2C multi-octets, la différence physique entre accéléromètre et gyroscope, la conversion des valeurs brutes, ainsi que la nécessité d'une calibration avant toute estimation d'angle.
+		
+		\vspace{0.3cm}
+		
+		\textbf{Configuration retenue :}
 		
 		\begin{itemize}
-			\item lecture des registres d'accélération ;
-			\item lecture du gyroscope ;
-			\item affichage UART.
+			\item périphérique I2C STM32 : \texttt{I2C1} à 100 kHz ;
+			\item MPU6050 à l'adresse I2C \texttt{0x68} ;
+			\item registre \texttt{PWR\_MGMT\_1} : \texttt{0x6B} ;
+			\item accéléromètre : plage par défaut $\pm 2g$ ;
+			\item sensibilité accéléromètre : 16384 LSB/$g$ ;
+			\item gyroscope : plage par défaut $\pm 250^\circ$/s ;
+			\item sensibilité gyroscope : 131 LSB/($^\circ$/s) ;
+			\item lecture groupée de 6 octets pour l'accéléromètre ;
+			\item lecture groupée de 6 octets pour le gyroscope ;
+			\item calibration statique du gyroscope sur 500 mesures ;
+			\item affichage des données brutes et converties avec l'UART.
 		\end{itemize}
 		
 		\vspace{0.3cm}
 		
-		\textbf{Problème attendu :}
+		\textbf{Réveil du MPU6050 :}
 		
-		Valeurs instables et bruitées.
+		Le MPU6050 démarre avec le bit \texttt{SLEEP} du registre \texttt{PWR\_MGMT\_1} actif. Une fonction d'écriture I2C a donc été ajoutée au pilote :
+		
+		\begin{center}
+			\texttt{i2c1\_write\_register(adresse, registre, valeur)}
+		\end{center}
+		
+		Le réveil du capteur est obtenu avec :
+		
+		\begin{center}
+			\texttt{PWR\_MGMT\_1 = 0x00}
+		\end{center}
+		
+		La nouvelle fonction a été validée expérimentalement en écrivant \texttt{0x00} dans le registre \texttt{0x6B}, puis en relisant ce même registre avec la fonction de lecture déjà développée pendant la séance 3.
+		
+		Le terminal a affiché :
+		
+		\begin{center}
+			\texttt{Demarrage du test MPU6050}\\
+			\texttt{MPU6050 detecte}\\
+			\texttt{Ecriture PWR\_MGMT\_1 OK}\\
+			\texttt{PWR\_MGMT\_1 = 0}
+		\end{center}
+		
+		Ce test confirme que l'écriture et la lecture d'un registre interne fonctionnent correctement avant d'aborder les mesures.
 		
 		\vspace{0.3cm}
 		
-		\textbf{Apprentissage :}
+		\textbf{Organisation des registres de mesure :}
 		
-		Les capteurs bruts ne sont jamais directement exploitables pour le contrôle.
+		Chaque axe est codé sur 16 bits, mais les registres du MPU6050 contiennent chacun 8 bits. Une mesure est donc séparée en un octet de poids fort \texttt{HIGH} et un octet de poids faible \texttt{LOW}.
+		
+		\begin{center}
+			\begin{tabular}{>{\bfseries}p{3cm}p{4.2cm}p{5.8cm}}
+				\toprule
+				Adresse & Registre & Contenu \\
+				\midrule
+				\texttt{0x3B} & \texttt{ACCEL\_XOUT\_H} & Accélération X, bits 15 à 8 \\
+				\texttt{0x3C} & \texttt{ACCEL\_XOUT\_L} & Accélération X, bits 7 à 0 \\
+				\texttt{0x3D} & \texttt{ACCEL\_YOUT\_H} & Accélération Y, bits 15 à 8 \\
+				\texttt{0x3E} & \texttt{ACCEL\_YOUT\_L} & Accélération Y, bits 7 à 0 \\
+				\texttt{0x3F} & \texttt{ACCEL\_ZOUT\_H} & Accélération Z, bits 15 à 8 \\
+				\texttt{0x40} & \texttt{ACCEL\_ZOUT\_L} & Accélération Z, bits 7 à 0 \\
+				\texttt{0x41--0x42} & \texttt{TEMP\_OUT} & Température interne du composant \\
+				\texttt{0x43} & \texttt{GYRO\_XOUT\_H} & Gyroscope X, bits 15 à 8 \\
+				\texttt{0x44} & \texttt{GYRO\_XOUT\_L} & Gyroscope X, bits 7 à 0 \\
+				\texttt{0x45} & \texttt{GYRO\_YOUT\_H} & Gyroscope Y, bits 15 à 8 \\
+				\texttt{0x46} & \texttt{GYRO\_YOUT\_L} & Gyroscope Y, bits 7 à 0 \\
+				\texttt{0x47} & \texttt{GYRO\_ZOUT\_H} & Gyroscope Z, bits 15 à 8 \\
+				\texttt{0x48} & \texttt{GYRO\_ZOUT\_L} & Gyroscope Z, bits 7 à 0 \\
+				\bottomrule
+			\end{tabular}
+		\end{center}
+		
+		La température a été identifiée pendant la séance, mais elle n'est pas utilisée dans la boucle de mesure du robot.
+		
+		\vspace{0.3cm}
+		
+		\textbf{Reconstruction des valeurs sur 16 bits :}
+		
+		Les deux octets d'un axe sont assemblés avec un décalage de 8 bits et une opération OU :
+		
+		\begin{center}
+			\texttt{valeur = (HIGH $\ll$ 8) | LOW}
+		\end{center}
+		
+		La valeur finale est interprétée avec le type \texttt{int16\_t}, car les accélérations et les vitesses angulaires peuvent être positives ou négatives. Le bit 15 représente alors le bit de signe dans la représentation en complément à deux.
+		
+		Par exemple, les octets :
+		
+		\begin{center}
+			\texttt{0xFF} et \texttt{0x00}
+		\end{center}
+		
+		forment \texttt{0xFF00}, soit \texttt{-256} lorsqu'ils sont interprétés comme un \texttt{int16\_t}.
+		
+		\vspace{0.3cm}
+		
+		\textbf{Lecture I2C de plusieurs registres :}
+		
+		Une nouvelle primitive \texttt{i2c1\_read\_registers()} a été ajoutée au pilote I2C afin de lire plusieurs registres consécutifs au cours d'une même transaction.
+		
+		La séquence utilisée est :
+		
+		\begin{center}
+			\fbox{\parbox{0.94\textwidth}{
+					\centering
+					\texttt{START}
+					$\rightarrow$ adresse + écriture
+					$\rightarrow$ registre de départ
+					$\rightarrow$ \textit{Repeated START}
+					$\rightarrow$ adresse + lecture
+					$\rightarrow$ réception de plusieurs octets
+					$\rightarrow$ \texttt{NACK}
+					$\rightarrow$ \texttt{STOP}
+			}}
+		\end{center}
+		
+		Pour l'accéléromètre, une lecture de 6 octets à partir de \texttt{0x3B} fournit directement :
+		
+		\begin{center}
+			\texttt{AX\_H AX\_L AY\_H AY\_L AZ\_H AZ\_L}
+		\end{center}
+		
+		Pour le gyroscope, une lecture de 6 octets à partir de \texttt{0x43} fournit :
+		
+		\begin{center}
+			\texttt{GX\_H GX\_L GY\_H GY\_L GZ\_H GZ\_L}
+		\end{center}
+		
+		\vspace{0.3cm}
+		
+		\textbf{Gestion particulière des trois derniers octets :}
+		
+		Le contrôleur I2C du STM32F4 possède un pipeline matériel composé notamment du registre de données \texttt{DR} et d'un registre de décalage interne. Lors d'une réception multiple, les derniers octets doivent donc être terminés avec une séquence spécifique afin de préparer suffisamment tôt le \texttt{NACK} et le \texttt{STOP}.
+		
+		Pour une lecture de 6 octets, les trois premiers sont lus normalement avec \texttt{RXNE}. Lorsqu'il reste exactement trois octets, le programme :
+		
+		\begin{enumerate}
+			\item attend \texttt{BTF} ;
+			\item désactive \texttt{ACK} ;
+			\item lit le premier des trois derniers octets ;
+			\item attend à nouveau \texttt{BTF} ;
+			\item demande \texttt{STOP} ;
+			\item lit les deux derniers octets.
+		\end{enumerate}
+		
+		Cette particularité appartient au contrôleur I2C de la STM32 et non au MPU6050.
+		
+		\vspace{0.3cm}
+		
+		\textbf{Premier test multi-octets :}
+		
+		Une première lecture de l'accéléromètre a retourné :
+		
+		\begin{center}
+			\texttt{Octets bruts : 244 152 40 76 202 140}\\[0.15cm]
+			\texttt{AX = -2920 | AY = 10316 | AZ = -13684}
+		\end{center}
+		
+		Ce résultat valide simultanément la lecture consécutive de six registres et la reconstruction correcte des trois valeurs signées.
+		
+		\vspace{0.3cm}
+		
+		\textbf{Conversion en grandeurs physiques :}
+		
+		Avec la plage par défaut $\pm 2g$, l'accéléromètre utilise une sensibilité de 16384 LSB/$g$ :
+		
+		\begin{center}
+			$a[g] = \frac{a_{brut}}{16384}$
+		\end{center}
+		
+		Avec la plage par défaut $\pm 250^\circ$/s, le gyroscope utilise une sensibilité de 131 LSB/($^\circ$/s) :
+		
+		\begin{center}
+			$\omega[^\circ/s] = \frac{\omega_{brut}}{131}$
+		\end{center}
+		
+		Les fonctions \texttt{mpu6050\_accel\_to\_g()} et \texttt{mpu6050\_gyro\_to\_dps()} réalisent ces conversions.
+		
+		\vspace{0.3cm}
+		
+		\textbf{Découverte et activation de la FPU :}
+		
+		Une difficulté importante est apparue lors de la première conversion en nombres flottants. Les lectures I2C de l'accéléromètre et du gyroscope se terminaient correctement, mais l'exécution s'arrêtait dès la première opération en \texttt{float}.
+		
+		Des traces UART ont permis de localiser le blocage précisément après le message :
+		
+		\begin{center}
+			\texttt{Conversions}
+		\end{center}
+		
+		et avant la fin de la conversion de l'axe X de l'accéléromètre.
+		
+		Le STM32F446RE utilise un coeur Cortex-M4F possédant une unité matérielle de calcul en virgule flottante. L'accès à cette FPU doit cependant être autorisé pour les coprocesseurs \texttt{CP10} et \texttt{CP11} dans le registre \texttt{CPACR}.
+		
+		Une fonction \texttt{fpu\_init()} a donc été ajoutée au démarrage. Après activation de CP10 et CP11, toutes les conversions en \texttt{float} ont fonctionné correctement.
+		
+		Ce problème explique aussi le blocage rencontré pendant la séance 5 lorsqu'un calcul de RPM en virgule flottante avait été essayé. À ce moment-là, le calcul avait volontairement été remplacé par une version entière ; la séance 7 a finalement permis de comprendre et de résoudre la cause matérielle.
+		
+		\vspace{0.3cm}
+		
+		\textbf{Validation expérimentale des six axes :}
+		
+		Des mouvements manuels du capteur ont permis de vérifier les deux comportements physiques attendus :
+		
+		\begin{itemize}
+			\item lorsqu'il est incliné puis maintenu immobile, l'accéléromètre conserve des composantes non nulles liées à la direction de la gravité, tandis que le gyroscope revient vers zéro ;
+			\item lors d'une rotation rapide, un ou plusieurs axes du gyroscope prennent immédiatement de fortes valeurs.
+		\end{itemize}
+		
+		Une mesure représentative pendant une rotation a par exemple donné :
+		
+		\begin{center}
+			\texttt{GYR | X = 1378 | Y = -2106 | Z = -21433}
+		\end{center}
+		
+		La composante Z correspond alors approximativement à :
+		
+		\begin{center}
+			$\omega_Z \approx -21433 / 131 \approx -164^\circ/s$
+		\end{center}
+		
+		À l'arrêt, des valeurs beaucoup plus faibles ont été observées, confirmant que le gyroscope mesure une vitesse de rotation et non directement un angle.
+		
+		\vspace{0.3cm}
+		
+		\textbf{Biais statique du gyroscope :}
+		
+		Avant calibration, le MPU6050 immobile ne renvoyait pas exactement zéro. Des mesures typiques étaient de l'ordre de :
+		
+		\begin{center}
+			\texttt{GX $\approx$ -1,5 $^\circ$/s \quad GY $\approx$ 0 $^\circ$/s \quad GZ $\approx$ -0,7 $^\circ$/s}
+		\end{center}
+		
+		Ce décalage est faible instantanément, mais il devient important si la vitesse angulaire est intégrée pendant plusieurs secondes. Une erreur constante de $-1,5^\circ$/s produirait théoriquement une dérive de $-15^\circ$ après dix secondes.
+		
+		\vspace{0.3cm}
+		
+		\textbf{Calibration statique du gyroscope :}
+		
+		Une fonction \texttt{mpu6050\_calibrate\_gyro()} a été ajoutée au pilote. Au démarrage, le capteur doit rester complètement immobile pendant que 500 mesures sont accumulées.
+		
+		Pour chaque axe :
+		
+		\begin{center}
+			$offset = \frac{1}{500}\sum_{i=1}^{500} mesure_i$
+		\end{center}
+		
+		Les sommes sont stockées dans des variables \texttt{int32\_t} afin d'éviter un débordement. Les offsets moyens sont ensuite soustraits aux nouvelles mesures :
+		
+		\begin{center}
+			\texttt{gyro\_corrige = gyro\_brut - offset}
+		\end{center}
+		
+		Après calibration, les mesures au repos sont devenues nettement plus proches de zéro :
+		
+		\begin{center}
+			\texttt{GYR dps | X = -0.20 | Y = -0.11 | Z = 0.22}\\
+			\texttt{GYR dps | X = -0.19 | Y = 0.04 | Z = 0.00}\\
+			\texttt{GYR dps | X = -0.00 | Y = -0.03 | Z = 0.08}
+		\end{center}
+		
+		La calibration supprime donc l'essentiel du biais constant, même si un bruit résiduel reste naturellement présent.
+		
+		\vspace{0.3cm}
+		
+		\textbf{Organisation logicielle finale :}
+		
+		Le code a été organisé en couches afin que chaque fichier reste responsable d'un niveau précis :
+		
+		\begin{center}
+			\begin{tabular}{>{\bfseries}p{4.2cm}p{8.8cm}}
+				\toprule
+				Fichier & Rôle \\
+				\midrule
+				\texttt{Inc/i2c.h / Src/i2c.c} & Transactions I2C bas niveau : initialisation, lecture simple, écriture d'un registre et lecture multi-octets. \\
+				\texttt{Inc/mpu6050.h / Src/mpu6050.c} & Registres du MPU6050, réveil, lecture des axes, conversions physiques et calibration du gyroscope. \\
+				\texttt{Inc/uart.h / Src/uart.c} & Affichage des entiers signés et des nombres flottants dans le terminal. \\
+				\texttt{Src/main.c} & Initialisation générale, boucle d'acquisition, application des offsets et affichage des mesures. \\
+				\bottomrule
+			\end{tabular}
+		\end{center}
+		
+		Le programme principal n'a donc plus besoin de connaître les adresses internes comme \texttt{0x3B}, \texttt{0x43} ou \texttt{0x6B}. Ces détails appartiennent au pilote \texttt{mpu6050.c}.
+		
+		\vspace{0.3cm}
+		
+		\textbf{Chaîne complète validée :}
+		
+		\begin{center}
+			\fbox{\parbox{0.92\textwidth}{
+					\centering
+					Mouvement / gravité
+					$\rightarrow$ MPU6050
+					$\rightarrow$ registres 16 bits
+					$\rightarrow$ I2C1
+					$\rightarrow$ STM32
+					$\rightarrow$ reconstruction \texttt{int16\_t}
+					\\[0.2cm]
+					$\rightarrow$ calibration gyro
+					$\rightarrow$ conversion en $g$ et $^\circ$/s
+					$\rightarrow$ UART
+					$\rightarrow$ PC
+			}}
+		\end{center}
+		
+		\vspace{0.3cm}
+		
+		\textbf{Problèmes rencontrés :}
+		
+		\begin{itemize}
+			\item nécessité d'ajouter une primitive d'écriture I2C pour réveiller le MPU6050 ;
+			\item nécessité de gérer correctement une réception I2C de plusieurs octets et notamment les trois derniers octets ;
+			\item blocage de l'exécution au premier calcul flottant tant que la FPU du Cortex-M4F n'était pas activée ;
+			\item présence d'un biais gyroscopique mesurable alors que le capteur était parfaitement immobile ;
+			\item bruit résiduel des mesures, normal pour un capteur inertiel réel.
+		\end{itemize}
+		
+		\vspace{0.3cm}
+		
+		\textbf{Solutions trouvées :}
+		
+		\begin{itemize}
+			\item ajout de \texttt{i2c1\_write\_register()} ;
+			\item ajout de \texttt{i2c1\_read\_registers()} avec gestion de \texttt{RXNE}, \texttt{BTF}, \texttt{ACK} et \texttt{STOP} ;
+			\item activation de la FPU au démarrage par le registre \texttt{CPACR} ;
+			\item instrumentation temporaire du programme avec l'UART afin de localiser précisément le blocage ;
+			\item moyenne de 500 mesures au repos pour calculer puis soustraire le biais du gyroscope ;
+			\item déplacement de la calibration dans le pilote \texttt{mpu6050.c} afin de conserver un \texttt{main.c} lisible.
+		\end{itemize}
+		
+		\vspace{0.3cm}
+		
+		\textbf{Notions comprises :}
+		
+		\begin{itemize}
+			\item Une mesure du MPU6050 est codée sur 16 bits signés et répartie sur deux registres de 8 bits.
+			\item Le type \texttt{int16\_t} permet de conserver correctement le signe d'une accélération ou d'une vitesse angulaire.
+			\item Une lecture multi-octets permet de récupérer plusieurs axes de manière plus cohérente qu'une succession de lectures indépendantes.
+			\item \texttt{RXNE} indique qu'une donnée reçue est disponible dans \texttt{DR}.
+			\item \texttt{BTF} est utilisé notamment pour gérer correctement la fin d'une réception multi-octets.
+			\item L'accéléromètre mesure les accélérations et fournit au repos une information liée à la direction de la gravité.
+			\item Le gyroscope mesure une vitesse angulaire en degrés par seconde et non directement un angle.
+			\item Les valeurs brutes doivent être converties avec la sensibilité correspondant à la plage configurée.
+			\item La FPU est une unité matérielle du Cortex-M4F dédiée aux calculs en virgule flottante.
+			\item Un gyroscope réel possède un biais statique qui doit être estimé puis compensé avant intégration.
+			\item Même après calibration, le capteur conserve du bruit : une mesure physique n'est jamais parfaitement constante.
+		\end{itemize}
+		
+		\vspace{0.3cm}
+		
+		\textbf{Résultat final :}
+		
+		La STM32 est désormais capable de réveiller le MPU6050, de lire les trois axes de l'accéléromètre et du gyroscope, de reconstruire les valeurs signées sur 16 bits, de les convertir en $g$ et en degrés par seconde, puis de corriger le biais statique du gyroscope au démarrage.
+		
+		Les données obtenues sont suffisamment cohérentes pour préparer l'étape suivante : l'estimation de l'angle du robot.
+		
+		\vspace{0.3cm}
+		
+		\textbf{Apprentissage principal :}
+		
+		Un capteur numérique ne fournit pas directement une grandeur parfaite prête pour le contrôle. Il faut comprendre son format de données, lire correctement ses registres, convertir les valeurs brutes, caractériser les erreurs réelles et corriger au moins les biais principaux avant de construire un algorithme de fusion ou de régulation.
+		
+		\vspace{0.3cm}
+		
+		\textbf{Prochaine étape :}
+		
+		Commencer la séance 8 avec le calcul d'un angle à partir de l'accéléromètre et l'intégration de la vitesse angulaire du gyroscope, puis combiner les deux estimations avec un filtre complémentaire.
 		
 	\end{sessionbox}
 	
@@ -2820,6 +3177,248 @@
 	\begin{warningbox}
 		La conversion encodeur $\rightarrow$ distance suppose que la roue roule sans glisser. Sur un robot réel, le patinage, la déformation des pneus et les différences entre les deux moteurs peuvent introduire une erreur d'odométrie. Une calibration expérimentale de chaque roue sera donc préférable lors de l'intégration finale.
 	\end{warningbox}
+	
+	
+	\subsection*{MPU6050 : mesures brutes et représentation sur 16 bits}
+	
+	Le MPU6050 regroupe un accéléromètre trois axes, un gyroscope trois axes et un capteur de température interne. Les mesures inertielle sont fournies sous forme d'entiers signés sur 16 bits.
+	
+	Comme les registres du composant contiennent 8 bits chacun, chaque axe occupe deux adresses consécutives :
+	
+	\begin{center}
+		\fbox{\parbox{0.82\textwidth}{
+				\centering
+				Octet \texttt{HIGH}
+				$\rightarrow$ bits 15 à 8
+				\qquad
+				Octet \texttt{LOW}
+				$\rightarrow$ bits 7 à 0
+		}}
+	\end{center}
+	
+	La reconstruction est réalisée par :
+	
+	\begin{center}
+		\texttt{valeur = (HIGH $\ll$ 8) | LOW}
+	\end{center}
+	
+	Le résultat est ensuite interprété comme un \texttt{int16\_t}. Le bit de poids fort devient alors le bit de signe et la plage représentable est :
+	
+	\begin{center}
+		$-32768 \leq valeur \leq 32767$
+	\end{center}
+	
+	Le complément à deux permet ainsi d'utiliser exactement les mêmes 16 bits pour représenter des accélérations ou des vitesses angulaires dans les deux directions.
+	
+	\subsubsection*{Registres principaux de mesure}
+	
+	Les registres utilisés pendant la séance 7 sont contigus :
+	
+	\begin{center}
+		\begin{tabular}{>{\bfseries}p{3cm}p{7cm}p{3cm}}
+			\toprule
+			Plage & Contenu & Taille \\
+			\midrule
+			\texttt{0x3B--0x40} & Accéléromètre X, Y, Z & 6 octets \\
+			\texttt{0x41--0x42} & Température interne & 2 octets \\
+			\texttt{0x43--0x48} & Gyroscope X, Y, Z & 6 octets \\
+			\bottomrule
+		\end{tabular}
+	\end{center}
+	
+	Une lecture complète à partir de \texttt{0x3B} pourrait donc récupérer les 14 octets en une seule transaction. Pendant la séance 7, l'accéléromètre et le gyroscope ont volontairement été lus séparément par blocs de 6 octets afin de conserver une progression pédagogique simple.
+	
+	\subsection*{Lecture I2C multi-octets sur STM32F4}
+	
+	Lire plusieurs registres consécutifs évite de répéter une transaction complète pour chaque octet et permet d'obtenir des mesures plus proches dans le temps.
+	
+	Le principe est :
+	
+	\begin{center}
+		\fbox{\parbox{0.92\textwidth}{
+				\centering
+				\texttt{START}
+				$\rightarrow$ adresse + écriture
+				$\rightarrow$ registre de départ
+				$\rightarrow$ \textit{Repeated START}
+				$\rightarrow$ adresse + lecture
+				$\rightarrow$ octet 1
+				$\rightarrow \cdots \rightarrow$ octet N
+				$\rightarrow$ \texttt{STOP}
+		}}
+	\end{center}
+	
+	\subsubsection*{\texttt{RXNE}, \texttt{BTF} et pipeline de réception}
+	
+	Le bit \texttt{RXNE} signifie \textit{Receive Data Register Not Empty}. Lorsqu'il vaut 1, un octet reçu est disponible dans \texttt{I2C1\_DR}.
+	
+	Le bit \texttt{BTF}, ou \textit{Byte Transfer Finished}, devient particulièrement important à la fin d'une lecture multiple. Le contrôleur I2C possède un registre de données et un registre de décalage interne : pendant que le logiciel lit un octet, le matériel peut déjà préparer le suivant.
+	
+	\begin{center}
+		\fbox{\parbox{0.76\textwidth}{
+				\centering
+				SDA
+				$\rightarrow$ registre de décalage interne
+				$\rightarrow$ \texttt{DR}
+				$\rightarrow$ programme
+		}}
+	\end{center}
+	
+	Ce fonctionnement en pipeline explique pourquoi le dernier acquittement ne peut pas être décidé trop tard.
+	
+	\subsubsection*{Pourquoi les trois derniers octets sont traités séparément}
+	
+	Dans le contrôleur I2C des STM32F4, lorsqu'une réception contient plus de trois octets, les premiers peuvent être consommés normalement avec \texttt{RXNE}. Dès qu'il n'en reste plus que trois, le logiciel prépare la fin de la transaction :
+	
+	\begin{center}
+		\fbox{\parbox{0.88\textwidth}{
+				\centering
+				3 octets restants
+				$\rightarrow$ attendre \texttt{BTF}
+				$\rightarrow$ \texttt{ACK = 0}
+				$\rightarrow$ lire N-2
+				\\[0.15cm]
+				$\rightarrow$ attendre \texttt{BTF}
+				$\rightarrow$ demander \texttt{STOP}
+				$\rightarrow$ lire N-1
+				$\rightarrow$ lire N
+		}}
+	\end{center}
+	
+	Les trois derniers octets n'ont donc rien de spécial dans le MPU6050. Cette séquence existe parce que le périphérique I2C de la STM32 doit préparer suffisamment tôt le \texttt{NACK} final et la libération du bus.
+	
+	\subsection*{Accéléromètre : gravité et conversion en g}
+	
+	Un accéléromètre mesure l'accélération spécifique selon ses trois axes. Lorsque le capteur est immobile, la gravité constitue la référence dominante et la norme mesurée doit être proche de $1g$ :
+	
+	\begin{center}
+		$\sqrt{a_x^2 + a_y^2 + a_z^2} \approx 1g$
+	\end{center}
+	
+	Si le MPU6050 est posé de manière à aligner son axe Z avec la verticale, on attend idéalement :
+	
+	\begin{center}
+		$A_X \approx 0g,\qquad A_Y \approx 0g,\qquad |A_Z| \approx 1g$
+	\end{center}
+	
+	Le signe dépend de l'orientation choisie pour les axes du module.
+	
+	Avec la plage $\pm 2g$, la sensibilité vaut 16384 LSB/$g$ :
+	
+	\begin{center}
+		$a[g] = \frac{a_{brut}}{16384}$
+	\end{center}
+	
+	L'accéléromètre fournit une référence liée à la direction de la gravité, ce qui permet de construire un angle d'inclinaison absolu pour le roulis ou le tangage lorsque les accélérations dynamiques restent limitées.
+	
+	\begin{warningbox}
+		L'accéléromètre ne distingue pas la gravité d'une accélération produite par le mouvement du robot. Une accélération, un choc ou une vibration peut donc perturber momentanément l'angle calculé à partir de ses seules mesures.
+	\end{warningbox}
+	
+	\subsection*{Gyroscope : vitesse angulaire, intégration et dérive}
+	
+	Le gyroscope ne mesure pas directement un angle. Il mesure une vitesse angulaire :
+	
+	\begin{center}
+		$\omega = \frac{d\theta}{dt}$
+	\end{center}
+	
+	Avec la plage $\pm 250^\circ$/s du MPU6050, la sensibilité vaut 131 LSB/($^\circ$/s) :
+	
+	\begin{center}
+		$\omega[^\circ/s] = \frac{\omega_{brut}}{131}$
+	\end{center}
+	
+	Pour reconstruire un angle, il faut intégrer cette vitesse dans le temps :
+	
+	\begin{center}
+		$\theta_{k+1} = \theta_k + \omega_k \Delta t$
+	\end{center}
+	
+	Cette intégration produit une estimation très réactive et généralement fluide à court terme. Cependant, toute petite erreur constante de vitesse est elle aussi intégrée et finit par produire une erreur d'angle importante.
+	
+	Par exemple, un biais de $1^\circ$/s provoquerait théoriquement :
+	
+	\begin{center}
+		$10^\circ$ d'erreur après 10 s, puis $60^\circ$ après 60 s.
+	\end{center}
+	
+	C'est la \textbf{dérive gyroscopique}.
+	
+	\subsection*{Biais, bruit et calibration statique du gyroscope}
+	
+	Un gyroscope réel ne renvoie pas exactement zéro lorsqu'il est immobile. La mesure contient au minimum :
+	
+	\begin{center}
+		\texttt{mesure = mouvement réel + biais + bruit}
+	\end{center}
+	
+	Le biais correspond à un décalage moyen relativement stable sur une courte période. Pour l'estimer, le capteur est laissé immobile et plusieurs centaines de mesures sont moyennées :
+	
+	\begin{center}
+		$offset = \frac{1}{N}\sum_{i=1}^{N}\omega_i$
+	\end{center}
+	
+	La mesure corrigée devient :
+	
+	\begin{center}
+		$\omega_{corrigee} = \omega_{brute} - offset$
+	\end{center}
+	
+	Pendant la séance 7, 500 mesures ont été utilisées. Avant compensation, l'axe X présentait typiquement un biais proche de $-1,5^\circ$/s. Après calibration, les mesures au repos sont devenues de l'ordre de quelques dixièmes de degré par seconde autour de zéro.
+	
+	La calibration réduit le biais, mais ne supprime pas le bruit. Elle ne garantit pas non plus que l'offset restera identique pour toutes les températures et pendant toute la durée de fonctionnement.
+	
+	\subsection*{FPU du Cortex-M4F}
+	
+	Le STM32F446RE utilise un coeur Cortex-M4F intégrant une FPU, ou \textit{Floating Point Unit}. Cette unité exécute matériellement les opérations en virgule flottante utilisées pour les conversions, le filtrage et plus tard le contrôle.
+	
+	Les accès à la FPU sont associés aux coprocesseurs \texttt{CP10} et \texttt{CP11}. Leur autorisation se trouve dans le registre \texttt{CPACR} du \textit{System Control Block}.
+	
+	\begin{center}
+		\begin{tabular}{>{\bfseries}p{4cm}p{8cm}}
+			\toprule
+			Champ & Rôle \\
+			\midrule
+			\texttt{CP10} & Autorisation d'accès à une partie de la FPU. \\
+			\texttt{CP11} & Autorisation d'accès à l'autre partie de la FPU. \\
+			\texttt{11} dans chaque champ & Accès complet autorisé. \\
+			\bottomrule
+		\end{tabular}
+	\end{center}
+	
+	Si le programme est compilé pour utiliser des instructions flottantes matérielles alors que CP10 et CP11 ne sont pas autorisés, l'exécution peut provoquer une faute processeur et sembler se bloquer.
+	
+	Dans la séance 7, ce comportement a été identifié grâce à des traces UART placées avant et après chaque conversion. L'activation de la FPU au démarrage a permis d'utiliser correctement les types \texttt{float}.
+	
+	\begin{center}
+		\fbox{\parbox{0.86\textwidth}{
+				\centering
+				Cortex-M4F
+				$\rightarrow$ autorisation CP10/CP11
+				$\rightarrow$ FPU
+				$\rightarrow$ calculs en \texttt{float}
+		}}
+	\end{center}
+	
+	\subsection*{Pourquoi accéléromètre et gyroscope sont complémentaires}
+	
+	Les deux capteurs fournissent des informations de nature différente.
+	
+	\begin{center}
+		\begin{tabular}{>{\bfseries}p{4cm}p{4.3cm}p{4.3cm}}
+			\toprule
+			Caractéristique & Accéléromètre & Gyroscope \\
+			\midrule
+			Grandeur mesurée & Accélération & Vitesse angulaire \\
+			Référence de verticale & Oui, via la gravité & Non \\
+			Comportement à court terme & Sensible au bruit et aux mouvements & Très réactif et fluide \\
+			Comportement à long terme & Ne dérive pas de la même manière & Dérive après intégration \\
+			\bottomrule
+		\end{tabular}
+	\end{center}
+	
+	L'accéléromètre peut donc rappeler où se trouve la verticale à long terme, tandis que le gyroscope décrit très bien les variations rapides de l'orientation. Cette complémentarité prépare directement le filtre complémentaire de la séance suivante.
 	
 	\subsection*{Filtre complémentaire}
 	
