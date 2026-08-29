@@ -14,6 +14,10 @@
 #define MPU6050_ACCEL_XOUT_H    0x3BU
 #define MPU6050_GYRO_XOUT_H     0x43U
 
+#define MPU6050_ACCEL_SENSITIVITY  16384.0f
+#define MPU6050_GYRO_SENSITIVITY     131.0f
+
+
 uint32_t mpu6050_init(void)
 {
     /*
@@ -107,4 +111,62 @@ uint32_t mpu6050_read_gyro(int16_t *gx,
                    | donnees[5]);
 
     return 0;
+}
+
+
+float mpu6050_accel_to_g(int16_t valeur_brute)
+{
+    return (float)valeur_brute / MPU6050_ACCEL_SENSITIVITY;
+}
+
+float mpu6050_gyro_to_dps(int16_t valeur_brute)
+{
+    return (float)valeur_brute / MPU6050_GYRO_SENSITIVITY;
+}
+
+#define MPU6050_GYRO_CALIBRATION_SAMPLES 500U
+
+uint32_t mpu6050_calibrate_gyro(int16_t *offset_gx,
+                                int16_t *offset_gy,
+                                int16_t *offset_gz)
+{
+    int32_t somme_gx = 0;
+    int32_t somme_gy = 0;
+    int32_t somme_gz = 0;
+
+    int16_t gx;
+    int16_t gy;
+    int16_t gz;
+
+    uint32_t erreur;
+
+    for (uint32_t i = 0;
+         i < MPU6050_GYRO_CALIBRATION_SAMPLES;
+         i++)
+    {
+        erreur = mpu6050_read_gyro(&gx, &gy, &gz);
+
+        if (erreur != 0U)
+        {
+            return erreur;
+        }
+
+        somme_gx += gx;
+        somme_gy += gy;
+        somme_gz += gz;
+    }
+
+    *offset_gx =
+        (int16_t)(somme_gx /
+                  (int32_t)MPU6050_GYRO_CALIBRATION_SAMPLES);
+
+    *offset_gy =
+        (int16_t)(somme_gy /
+                  (int32_t)MPU6050_GYRO_CALIBRATION_SAMPLES);
+
+    *offset_gz =
+        (int16_t)(somme_gz /
+                  (int32_t)MPU6050_GYRO_CALIBRATION_SAMPLES);
+
+    return 0U;
 }

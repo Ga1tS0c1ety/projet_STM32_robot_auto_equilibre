@@ -198,3 +198,36 @@ void uart_send_int(int32_t value)
         uart_send_char(buffer[--i]);
     }
 }
+
+void uart_send_float(float value, uint32_t decimals)
+{
+    if (value < 0.0f)
+    {
+        uart_send_char('-');
+        value = -value;
+    }
+
+    uint32_t partie_entiere = (uint32_t)value;
+
+    uart_send_uint(partie_entiere);
+
+    if (decimals == 0U)
+    {
+        return;
+    }
+
+    uart_send_char('.');
+
+    float fraction = value - (float)partie_entiere;
+
+    for (uint32_t i = 0; i < decimals; i++)
+    {
+        fraction *= 10.0f;
+
+        uint32_t chiffre = (uint32_t)fraction;
+
+        uart_send_char((char)('0' + chiffre));
+
+        fraction -= (float)chiffre;
+    }
+}

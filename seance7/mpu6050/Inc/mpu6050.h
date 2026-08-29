@@ -26,4 +26,14 @@ uint32_t mpu6050_read_gyro(int16_t *gx,
                            int16_t *gy,
                            int16_t *gz);
 
+float mpu6050_accel_to_g(int16_t valeur_brute);
+
+float mpu6050_gyro_to_dps(int16_t valeur_brute);
+
+uint32_t mpu6050_calibrate_gyro(int16_t *offset_gx,
+                                int16_t *offset_gy,
+                                int16_t *offset_gz);
+
+
+
 #endif /* MPU6050_H */

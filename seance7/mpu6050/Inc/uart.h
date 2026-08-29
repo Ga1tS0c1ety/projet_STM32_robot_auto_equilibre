@@ -25,4 +25,7 @@ void uart_send_uint(uint32_t nombre);
 /* Envoie un entier signé en écriture décimale. */
 void uart_send_int(int32_t value);
 
+/* Envoie un entier signé en écriture flottante. */
+void uart_send_float(float value, uint32_t decimals);
+
 #endif /* UART_H */
