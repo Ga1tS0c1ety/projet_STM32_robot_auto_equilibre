@@ -10,12 +10,16 @@
 #define RAD_TO_DEG 57.2957795f
 #define SCB_CPACR (*(volatile uint32_t *)0xE000ED88UL)
 
-#define FILTRE_ALPHA   0.98f
 #define UART_PERIOD_US 100000UL
 
 /*
- * Activation de la FPU Cortex-M4F.
+ * Coefficients à comparer.
  */
+#define ALPHA_1 0.90f
+#define ALPHA_2 0.95f
+#define ALPHA_3 0.98f
+#define ALPHA_4 0.99f
+
 static void fpu_init(void)
 {
     SCB_CPACR |= (0xFUL << 20);
@@ -25,8 +29,7 @@ static void fpu_init(void)
 }
 
 /*
- * Estimation de l'angle par l'accéléromètre.
- * Rotation supposée autour de l'axe Y.
+ * Angle absolu à partir de l'accéléromètre.
  */
 static float calculer_angle_acc(float ax, float az)
 {
@@ -34,52 +37,28 @@ static float calculer_angle_acc(float ax, float az)
 }
 
 /*
- * Une étape du filtre complémentaire.
- *
- * angle_precedent : estimation filtrée précédente
- * vitesse_gyro    : vitesse angulaire en deg/s
- * dt              : temps écoulé en secondes
- * angle_acc       : angle accélérométrique en degrés
+ * Filtre complémentaire.
  */
 static float filtre_complementaire(float angle_precedent,
                                   float vitesse_gyro,
                                   float angle_acc,
-                                  float dt)
+                                  float dt,
+                                  float alpha)
 {
     float prediction = angle_precedent + vitesse_gyro * dt;
 
-    return FILTRE_ALPHA * prediction
-         + (1.0f - FILTRE_ALPHA) * angle_acc;
+    return alpha * prediction
+         + (1.0f - alpha) * angle_acc;
 }
 
 /*
- * Affichage périodique des résultats.
+ * Affichage d'un angle avec son coefficient.
  */
-static void afficher_angles(float angle_acc,
-                            float angle_gyro,
-                            float angle_filtre,
-                            float gy_dps,
-                            float dt)
+static void afficher_filtre(const char *nom, float angle)
 {
-    uart_send_string("Angle ACC    : ");
-    uart_send_float(angle_acc, 2);
+    uart_send_string(nom);
+    uart_send_float(angle, 2);
     uart_send_string(" deg\r\n");
-
-    uart_send_string("Angle GYRO   : ");
-    uart_send_float(angle_gyro, 2);
-    uart_send_string(" deg\r\n");
-
-    uart_send_string("Angle FILTRE : ");
-    uart_send_float(angle_filtre, 2);
-    uart_send_string(" deg\r\n");
-
-    uart_send_string("GY vitesse   : ");
-    uart_send_float(gy_dps, 3);
-    uart_send_string(" deg/s\r\n");
-
-    uart_send_string("Delta t      : ");
-    uart_send_float(dt, 4);
-    uart_send_string(" s\r\n\r\n");
 }
 
 int main(void)
@@ -95,7 +74,11 @@ int main(void)
 
     float angle_acc;
     float angle_gyro;
-    float angle_filtre;
+
+    float angle_f1;
+    float angle_f2;
+    float angle_f3;
+    float angle_f4;
 
     float gy_dps;
     float dt;
@@ -114,29 +97,22 @@ int main(void)
     timebase_init();
 
     uart_send_string(
-        "\r\n=== SEANCE 8 - FILTRE COMPLEMENTAIRE ===\r\n"
+        "\r\n=== COMPARAISON FILTRES COMPLEMENTAIRES ===\r\n"
     );
 
     erreur = mpu6050_init();
 
     if (erreur != 0U)
     {
-        uart_send_string("Erreur initialisation MPU6050 : ");
-        uart_send_uint(erreur);
-        uart_send_string("\r\n");
-
+        uart_send_string("Erreur MPU6050\r\n");
         while (1) {}
     }
 
-    uart_send_string("MPU6050 initialise\r\n");
-
     /*
-     * 2. Calibration gyroscope
-     *
-     * Ne pas bouger le capteur pendant cette phase.
+     * 2. Calibration du gyroscope
      */
-    uart_send_string("Calibration gyroscope...\r\n");
-    uart_send_string("Ne pas bouger le MPU6050.\r\n");
+    uart_send_string("Calibration gyro...\r\n");
+    uart_send_string("Ne pas bouger le capteur.\r\n");
 
     erreur = mpu6050_calibrate_gyro(
         &offset_gx,
@@ -146,24 +122,20 @@ int main(void)
 
     if (erreur != 0U)
     {
-        uart_send_string("Erreur calibration : ");
-        uart_send_uint(erreur);
-        uart_send_string("\r\n");
-
+        uart_send_string("Erreur calibration\r\n");
         while (1) {}
     }
 
     uart_send_string("Calibration terminee\r\n");
 
     /*
-     * 3. Initialisation des estimations
+     * 3. Initialisation des angles
      */
     erreur = mpu6050_read_accel(&ax, &ay, &az);
 
     if (erreur != 0U)
     {
-        uart_send_string("Erreur lecture angle initial\r\n");
-
+        uart_send_string("Erreur angle initial\r\n");
         while (1) {}
     }
 
@@ -173,23 +145,30 @@ int main(void)
     );
 
     angle_gyro = angle_acc;
-    angle_filtre = angle_acc;
 
     /*
-     * 4. Initialisation temporelle
+     * Tous les filtres partent du même angle.
+     */
+    angle_f1 = angle_acc;
+    angle_f2 = angle_acc;
+    angle_f3 = angle_acc;
+    angle_f4 = angle_acc;
+
+    /*
+     * 4. Référence temporelle
      */
     temps_precedent = timebase_get_us();
     temps_affichage = temps_precedent;
 
-    uart_send_string("Debut du filtrage\r\n\r\n");
+    uart_send_string("Debut comparaison\r\n\r\n");
 
     /*
-     * 5. Boucle de mesure
+     * 5. Boucle principale
      */
     while (1)
     {
         /*
-         * Lecture des accélérations
+         * Lire l'accéléromètre.
          */
         erreur = mpu6050_read_accel(&ax, &ay, &az);
 
@@ -204,7 +183,7 @@ int main(void)
         );
 
         /*
-         * Lecture du gyroscope
+         * Lire le gyroscope.
          */
         erreur = mpu6050_read_gyro(&gx, &gy, &gz);
 
@@ -214,7 +193,7 @@ int main(void)
         }
 
         /*
-         * Mesure précise du temps avec TIM5
+         * Calculer le temps écoulé.
          */
         temps_actuel = timebase_get_us();
 
@@ -224,7 +203,7 @@ int main(void)
         temps_precedent = temps_actuel;
 
         /*
-         * Compensation du biais gyroscopique
+         * Compenser le biais gyroscopique.
          */
         int32_t gy_corrige =
             (int32_t)gy - (int32_t)offset_gy;
@@ -234,38 +213,51 @@ int main(void)
         );
 
         /*
-         * 6. Intégration gyroscope seule
-         *
-         * Conservée pour comparaison.
+         * Angle gyroscopique non filtré.
          */
         angle_gyro += gy_dps * dt;
 
         /*
-         * 7. Fusion accéléromètre / gyroscope
+         * 6. Les quatre filtres.
          */
-        angle_filtre = filtre_complementaire(
-            angle_filtre,
-            gy_dps,
-            angle_acc,
-            dt
+        angle_f1 = filtre_complementaire(
+            angle_f1, gy_dps, angle_acc, dt, ALPHA_1
+        );
+
+        angle_f2 = filtre_complementaire(
+            angle_f2, gy_dps, angle_acc, dt, ALPHA_2
+        );
+
+        angle_f3 = filtre_complementaire(
+            angle_f3, gy_dps, angle_acc, dt, ALPHA_3
+        );
+
+        angle_f4 = filtre_complementaire(
+            angle_f4, gy_dps, angle_acc, dt, ALPHA_4
         );
 
         /*
-         * 8. Affichage UART toutes les 100 ms
+         * 7. Affichage toutes les 100 ms.
          *
-         * La boucle de mesure tourne indépendamment
-         * de l'affichage.
+         * L'intégration et le filtrage continuent
+         * à chaque itération.
          */
         if ((uint32_t)(temps_actuel - temps_affichage)
             >= UART_PERIOD_US)
         {
-            afficher_angles(
-                angle_acc,
-                angle_gyro,
-                angle_filtre,
-                gy_dps,
-                dt
-            );
+            afficher_filtre("ACC        : ", angle_acc);
+            afficher_filtre("GYRO       : ", angle_gyro);
+
+            afficher_filtre("ALPHA 0.90 : ", angle_f1);
+            afficher_filtre("ALPHA 0.95 : ", angle_f2);
+            afficher_filtre("ALPHA 0.98 : ", angle_f3);
+            afficher_filtre("ALPHA 0.99 : ", angle_f4);
+
+            uart_send_string("dt         : ");
+            uart_send_float(dt, 4);
+            uart_send_string(" s\r\n");
+
+            uart_send_string("------------------------\r\n");
 
             temps_affichage = temps_actuel;
         }
