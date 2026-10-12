@@ -8,17 +8,13 @@
 #include "timebase.h"
 
 #define RAD_TO_DEG 57.2957795f
-
 #define SCB_CPACR (*(volatile uint32_t *)0xE000ED88UL)
 
-/*
- * Période minimale entre deux affichages UART.
- * 100 000 us = 100 ms.
- */
+#define FILTRE_ALPHA   0.98f
 #define UART_PERIOD_US 100000UL
 
 /*
- * Activation du coprocesseur flottant.
+ * Activation de la FPU Cortex-M4F.
  */
 static void fpu_init(void)
 {
@@ -29,12 +25,8 @@ static void fpu_init(void)
 }
 
 /*
- * Calcul de l'angle à partir de l'accéléromètre.
- *
- * Hypothèse :
- * rotation autour de l'axe Y du MPU6050.
- *
- * Résultat en degrés.
+ * Estimation de l'angle par l'accéléromètre.
+ * Rotation supposée autour de l'axe Y.
  */
 static float calculer_angle_acc(float ax, float az)
 {
@@ -42,21 +34,50 @@ static float calculer_angle_acc(float ax, float az)
 }
 
 /*
- * Affichage des résultats.
+ * Une étape du filtre complémentaire.
+ *
+ * angle_precedent : estimation filtrée précédente
+ * vitesse_gyro    : vitesse angulaire en deg/s
+ * dt              : temps écoulé en secondes
+ * angle_acc       : angle accélérométrique en degrés
+ */
+static float filtre_complementaire(float angle_precedent,
+                                  float vitesse_gyro,
+                                  float angle_acc,
+                                  float dt)
+{
+    float prediction = angle_precedent + vitesse_gyro * dt;
+
+    return FILTRE_ALPHA * prediction
+         + (1.0f - FILTRE_ALPHA) * angle_acc;
+}
+
+/*
+ * Affichage périodique des résultats.
  */
 static void afficher_angles(float angle_acc,
                             float angle_gyro,
+                            float angle_filtre,
+                            float gy_dps,
                             float dt)
 {
-    uart_send_string("Angle ACC  : ");
+    uart_send_string("Angle ACC    : ");
     uart_send_float(angle_acc, 2);
     uart_send_string(" deg\r\n");
 
-    uart_send_string("Angle GYRO : ");
+    uart_send_string("Angle GYRO   : ");
     uart_send_float(angle_gyro, 2);
     uart_send_string(" deg\r\n");
 
-    uart_send_string("Delta t    : ");
+    uart_send_string("Angle FILTRE : ");
+    uart_send_float(angle_filtre, 2);
+    uart_send_string(" deg\r\n");
+
+    uart_send_string("GY vitesse   : ");
+    uart_send_float(gy_dps, 3);
+    uart_send_string(" deg/s\r\n");
+
+    uart_send_string("Delta t      : ");
     uart_send_float(dt, 4);
     uart_send_string(" s\r\n\r\n");
 }
@@ -74,6 +95,7 @@ int main(void)
 
     float angle_acc;
     float angle_gyro;
+    float angle_filtre;
 
     float gy_dps;
     float dt;
@@ -83,7 +105,7 @@ int main(void)
     uint32_t temps_affichage;
 
     /*
-     * 1. Initialisations
+     * 1. Initialisation matérielle
      */
     fpu_init();
 
@@ -92,27 +114,29 @@ int main(void)
     timebase_init();
 
     uart_send_string(
-        "\r\nSeance 8 - Integration gyroscope\r\n"
+        "\r\n=== SEANCE 8 - FILTRE COMPLEMENTAIRE ===\r\n"
     );
 
     erreur = mpu6050_init();
 
     if (erreur != 0U)
     {
-        uart_send_string("Erreur MPU6050\r\n");
+        uart_send_string("Erreur initialisation MPU6050 : ");
+        uart_send_uint(erreur);
+        uart_send_string("\r\n");
 
-        while (1)
-        {
-        }
+        while (1) {}
     }
 
     uart_send_string("MPU6050 initialise\r\n");
 
     /*
-     * 2. Calibration du gyroscope.
-     * Le MPU6050 doit rester immobile.
+     * 2. Calibration gyroscope
+     *
+     * Ne pas bouger le capteur pendant cette phase.
      */
     uart_send_string("Calibration gyroscope...\r\n");
+    uart_send_string("Ne pas bouger le MPU6050.\r\n");
 
     erreur = mpu6050_calibrate_gyro(
         &offset_gx,
@@ -122,30 +146,25 @@ int main(void)
 
     if (erreur != 0U)
     {
-        uart_send_string("Erreur calibration\r\n");
+        uart_send_string("Erreur calibration : ");
+        uart_send_uint(erreur);
+        uart_send_string("\r\n");
 
-        while (1)
-        {
-        }
+        while (1) {}
     }
 
     uart_send_string("Calibration terminee\r\n");
 
     /*
-     * 3. Lecture initiale de l'accéléromètre.
-     *
-     * On initialise les deux estimations
-     * avec le même angle de départ.
+     * 3. Initialisation des estimations
      */
     erreur = mpu6050_read_accel(&ax, &ay, &az);
 
     if (erreur != 0U)
     {
-        uart_send_string("Erreur angle initial\r\n");
+        uart_send_string("Erreur lecture angle initial\r\n");
 
-        while (1)
-        {
-        }
+        while (1) {}
     }
 
     angle_acc = calculer_angle_acc(
@@ -154,14 +173,15 @@ int main(void)
     );
 
     angle_gyro = angle_acc;
+    angle_filtre = angle_acc;
 
     /*
-     * 4. Référence temporelle.
+     * 4. Initialisation temporelle
      */
     temps_precedent = timebase_get_us();
     temps_affichage = temps_precedent;
 
-    uart_send_string("Debut des mesures\r\n\r\n");
+    uart_send_string("Debut du filtrage\r\n\r\n");
 
     /*
      * 5. Boucle de mesure
@@ -169,7 +189,7 @@ int main(void)
     while (1)
     {
         /*
-         * Lecture accéléromètre
+         * Lecture des accélérations
          */
         erreur = mpu6050_read_accel(&ax, &ay, &az);
 
@@ -178,16 +198,13 @@ int main(void)
             continue;
         }
 
-        /*
-         * Calcul de l'angle absolu
-         */
         angle_acc = calculer_angle_acc(
             (float)ax,
             (float)az
         );
 
         /*
-         * Lecture gyroscope
+         * Lecture du gyroscope
          */
         erreur = mpu6050_read_gyro(&gx, &gy, &gz);
 
@@ -197,7 +214,7 @@ int main(void)
         }
 
         /*
-         * Mesure du temps écoulé
+         * Mesure précise du temps avec TIM5
          */
         temps_actuel = timebase_get_us();
 
@@ -207,10 +224,7 @@ int main(void)
         temps_precedent = temps_actuel;
 
         /*
-         * Correction du biais du gyroscope.
-         *
-         * Ici, le tangage est supposé correspondre
-         * à la rotation autour de Y.
+         * Compensation du biais gyroscopique
          */
         int32_t gy_corrige =
             (int32_t)gy - (int32_t)offset_gy;
@@ -220,17 +234,27 @@ int main(void)
         );
 
         /*
-         * 6. Intégration du gyroscope
+         * 6. Intégration gyroscope seule
          *
-         * theta(k) = theta(k-1) + omega * dt
+         * Conservée pour comparaison.
          */
         angle_gyro += gy_dps * dt;
 
         /*
-         * 7. Affichage périodique
+         * 7. Fusion accéléromètre / gyroscope
+         */
+        angle_filtre = filtre_complementaire(
+            angle_filtre,
+            gy_dps,
+            angle_acc,
+            dt
+        );
+
+        /*
+         * 8. Affichage UART toutes les 100 ms
          *
-         * Les mesures continuent à chaque tour.
-         * L'UART n'affiche qu'environ 10 fois/s.
+         * La boucle de mesure tourne indépendamment
+         * de l'affichage.
          */
         if ((uint32_t)(temps_actuel - temps_affichage)
             >= UART_PERIOD_US)
@@ -238,12 +262,10 @@ int main(void)
             afficher_angles(
                 angle_acc,
                 angle_gyro,
+                angle_filtre,
+                gy_dps,
                 dt
             );
-
-            uart_send_string("GY vitesse : ");
-            uart_send_float(gy_dps, 3);
-            uart_send_string(" deg/s\r\n");
 
             temps_affichage = temps_actuel;
         }
