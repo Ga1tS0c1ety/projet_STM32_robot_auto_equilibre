@@ -35,6 +35,7 @@ target_sources(${PROJECT_NAME} PRIVATE
   Src/mpu6050.c
   Src/main.c
   Src/timebase.c
+  Src/filtre_complementaire.c
   # User defined sources
 )
 

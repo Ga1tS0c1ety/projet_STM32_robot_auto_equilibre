@@ -12,6 +12,7 @@
 \usepackage{enumitem}
 \usepackage{titlesec}
 \usepackage{array}
+\usepackage{amsmath}
 \usepackage{longtable}
 \usepackage{booktabs}
 \usepackage{textcomp}
@@ -1733,39 +1734,145 @@
 	
 	\begin{sessionbox}
 		
-		\textbf{Objectif :} Obtenir un angle stable.
+		\textbf{Date :} Août--octobre 2026
 		
 		\vspace{0.3cm}
 		
-		\textbf{Technologie :} Fusion accéléromètre + gyroscope.
+		\textbf{Objectif :}
+		
+		Estimer l'angle de tangage du robot en fusionnant les mesures de l'accéléromètre et du gyroscope du MPU6050, puis disposer d'un module logiciel réutilisable pour une future boucle de régulation.
+		
+		\vspace{0.3cm}
+		
+		\textbf{Objectif pédagogique :}
+		
+		Distinguer une mesure d'inclinaison absolue, bruitée mais sans dérive cumulative, d'une mesure de vitesse angulaire, fluide à court terme mais susceptible de dériver après intégration. Mesurer réellement le pas temporel, valider les signes des axes et comprendre la pondération d'un filtre complémentaire discret.
+		
+		\vspace{0.3cm}
+		
+		\textbf{Configuration retenue :}
+		
+		\begin{itemize}
+			\item Carte \texttt{NUCLEO-F446RE}, programmation C bare-metal sans HAL.
+			\item MPU6050 sur \texttt{I2C1}, broches \texttt{PB8/PB9}, adresse \texttt{0x68}.
+			\item Tangage autour de l'axe Y ; accélérations X et Z pour l'angle absolu, vitesse gyroscopique Y pour l'intégration.
+			\item Base de temps matérielle \texttt{TIM5}, compteur à 1~\textmu s par tick sous l'hypothèse d'une horloge timer de 16 MHz.
+			\item Affichage de diagnostic avec \texttt{USART2} à 115200 bauds, environ toutes les 100 ms, sans ralentir volontairement l'acquisition.
+			\item FPU du Cortex-M4F activée avant les calculs flottants ; bibliothèque mathématique liée pour \texttt{atan2f()}.
+		\end{itemize}
 		
 		\vspace{0.3cm}
 		
 		\textbf{Réalisation :}
 		
+		\begin{enumerate}
+			\item Reprise des pilotes \texttt{uart}, \texttt{i2c} et \texttt{mpu6050} développés lors des séances précédentes.
+			\item Calcul de l'angle accélérométrique par \(\theta_{acc}=\operatorname{atan2}(-A_x,A_z)\times 180/\pi\), après vérification expérimentale de la convention d'axes.
+			\item Activation explicite de la FPU avec le registre \texttt{SCB\_CPACR}, puis barrières d'instructions \texttt{DSB/ISB}.
+			\item Vérification de la base de temps TIM5 : mesure d'intervalles de l'ordre de 701663~\textmu s lors d'un premier test à temporisation logicielle, puis lecture du temps entre acquisitions.
+			\item Calibration du biais du gyroscope au repos, par moyenne de plusieurs échantillons, avant chaque expérience.
+			\item Conversion de la mesure gyroscopique corrigée en degrés par seconde et intégration discrète : \(\theta_{gyro,k}=\theta_{gyro,k-1}+\omega_y\Delta t\).
+			\item Test des signes : une diminution de l'angle ACC s'accompagne d'une vitesse Y principalement négative et d'une diminution de l'angle GYRO. Conservation de l'opérateur \texttt{+=}.
+			\item Réalisation du filtre complémentaire à coefficient fixe, initialement \(\alpha=0{,}98\).
+			\item Comparaison simultanée de quatre filtres : \(\alpha=0{,}90\), \(0{,}95\), \(0{,}98\) et \(0{,}99\), tous alimentés par les mêmes acquisitions.
+			\item Encapsulation du filtre dans \texttt{Inc/filtre\_complementaire.h} et \texttt{Src/filtre\_complementaire.c}, puis validation du programme principal avec ce module.
+		\end{enumerate}
+		
+		\vspace{0.3cm}
+		
+		\textbf{Problèmes rencontrés et solutions :}
+		
 		\begin{itemize}
-			\item implémentation du filtre complémentaire ;
-			\item estimation de l'angle de tangage ;
-			\item stabilisation des mesures.
+			\item \textbf{Blocage lors du calcul de \texttt{atan2f()} :} la FPU n'était pas encore activée dans le nouveau projet. Activation des coprocesseurs CP10/CP11 dans \texttt{SCB\_CPACR} avant les opérations flottantes ; vérification du lien avec \texttt{-lm}.
+			\item \textbf{Imprécision d'une temporisation par boucle :} utilisation du compteur matériel TIM5 et de la soustraction de deux timestamps non signés. La temporisation d'affichage UART est indépendante de la boucle de mesure.
+			\item \textbf{Fluctuations et divergence des angles :} mesure séparée des angles ACC et GYRO, calibration du gyroscope immobile, puis comparaison expérimentale avant fusion.
+			\item \textbf{Dépendance au pas d'échantillonnage :} dans la version finale modulaire, calcul du coefficient \(\alpha\) à partir d'une constante de temps \(\tau\) et du \(\Delta t\) mesuré, plutôt que conservation d'un coefficient fixe.
 		\end{itemize}
 		
 		\vspace{0.3cm}
 		
-		\textbf{Problème attendu :}
+		\textbf{Résultats expérimentaux représentatifs :}
 		
-		Dérive gyroscopique et bruit de l'accéléromètre.
+		\begin{itemize}
+			\item Au repos, les vitesses gyroscopiques corrigées sont majoritairement proches de zéro (par exemple \(-0{,}145\), \(0{,}015\) et \(0{,}328\)~degrés/s) ; l'angle intégré est resté autour de \(10{,}50^\circ\) sur un extrait, tandis que l'angle ACC fluctuait autour de \(9^\circ\) à \(12^\circ\).
+			\item Le temps entre deux acquisitions affiché pendant les essais est d'environ \(\Delta t=0{,}0017\)~s, correspondant approximativement à 588 acquisitions/s ; il s'agit d'un affichage arrondi à quatre décimales.
+			\item En rotation contrôlée, les variations des angles ACC et GYRO ont le même signe global : par exemple ACC passe de \(28{,}57^\circ\) à \(11{,}42^\circ\), pendant que la vitesse Y reste principalement négative.
+			\item Avec le filtre \(\alpha=0{,}98\), une phase de stabilisation montre ACC variant entre \(11{,}32^\circ\) et \(13{,}58^\circ\) alors que l'angle filtré reste proche de \(12{,}6^\circ\) à \(13^\circ\).
+			\item Dans le test comparatif, ACC vaut \(24{,}17^\circ\) après une mesure à \(27{,}28^\circ\). Les quatre filtres affichent respectivement \(24{,}93^\circ\), \(25{,}20^\circ\), \(25{,}48^\circ\) et \(25{,}58^\circ\) : les coefficients plus élevés amortissent davantage ce changement rapide.
+			\item En fin de comparaison, alors que le gyroscope intégré seul indique \(19{,}12^\circ\), les filtres fournissent \(34{,}57^\circ\), \(34{,}49^\circ\), \(34{,}39^\circ\) et \(34{,}33^\circ\) face à ACC \(35{,}42^\circ\), montrant la correction progressive de l'écart accumulé.
+		\end{itemize}
 		
 		\vspace{0.3cm}
 		
-		\textbf{Solution :}
+		\textbf{Comparaison des coefficients :}
 		
-		Pondérer l'information du gyroscope et de l'accéléromètre.
+		\begin{center}
+			\begin{tabular}{>{\bfseries}p{2cm}p{5cm}p{5.5cm}}
+				\toprule
+				\(\alpha\) & Influence de l'accéléromètre & Observation / compromis \\
+				\midrule
+				0,90 & Correction plus forte & Réagit davantage aux fluctuations ACC. \\
+				0,95 & Correction intermédiaire & Compromis entre réactivité et lissage. \\
+				0,98 & Correction plus progressive & Bon point de départ expérimental. \\
+				0,99 & Correction la plus lente & Atténue davantage les perturbations rapides ACC. \\
+				\bottomrule
+			\end{tabular}
+		\end{center}
+		
+		La valeur \(0{,}98\) est conservée comme référence provisoire. Les essais ne déterminent pas encore un coefficient optimal pour le robot monté : une mesure de référence, des métriques de bruit et des essais dynamiques reproductibles seront nécessaires.
 		
 		\vspace{0.3cm}
 		
-		\textbf{Apprentissage :}
+		\textbf{Organisation logicielle finale :}
 		
-		La fusion de capteurs est une base des systèmes autonomes.
+		\begin{center}
+			\begin{tabular}{>{\bfseries}p{5cm}p{8cm}}
+				\toprule
+				Fichier & Rôle \\
+				\midrule
+				\texttt{Inc/filtre\_complementaire.h} & Structure contenant l'angle estimé et la constante de temps ; déclarations d'initialisation et de mise à jour. \\
+				\texttt{Src/filtre\_complementaire.c} & Prédiction gyroscopique, calcul de \(\alpha\) et correction accélérométrique. \\
+				\texttt{Src/timebase.c} & Lecture du temps matériel avec TIM5. \\
+				\texttt{Src/main.c} & Initialisation, calibration, acquisitions I2C, calcul de \(\Delta t\), appels du filtre et diagnostic UART. \\
+				\bottomrule
+			\end{tabular}
+		\end{center}
+		
+		\vspace{0.3cm}
+		
+		\textbf{Schéma-bloc de la chaîne de mesure :}
+		
+		\begin{center}
+			\fbox{\parbox{0.91\textwidth}{
+					\centering
+					MPU6050 \(\longrightarrow\) acquisitions I2C\\[0.15cm]
+					\(\underbrace{A_x,A_z \ \longrightarrow\ \theta_{acc}}_{\text{référence d'inclinaison}}\)
+					\qquad
+					\(\underbrace{G_y \ \longrightarrow\ \omega_y\Delta t}_{\text{variation rapide}}\)\\[0.15cm]
+					\(\theta_{acc}+\omega_y\Delta t+\theta_{filtre,k-1}\)
+					\(\longrightarrow\) filtre complémentaire
+					\(\longrightarrow\theta_{filtre,k}\)\\[0.15cm]
+					TIM5 \(\longrightarrow\Delta t\) \qquad UART \(\longleftarrow\theta_{filtre,k}\)
+			}}
+		\end{center}
+		
+		\vspace{0.3cm}
+		
+		\textbf{Apprentissage principal :}
+		
+		L'accéléromètre limite la dérive à long terme, tandis que le gyroscope restitue rapidement les variations d'orientation. La fusion combine leurs avantages ; elle exige cependant une calibration, une convention de signe cohérente et un pas temporel correctement mesuré.
+		
+		\vspace{0.3cm}
+		
+		\textbf{Résultat final :}
+		
+		L'estimation de tangage par filtre complémentaire est fonctionnelle et le module \texttt{filtre\_complementaire.h/.c} a été testé avec succès sur la STM32F446RE. La mesure est prête à être intégrée aux futures expériences de contrôle, sous réserve de valider le comportement lorsque l'IMU sera fixée au châssis.
+		
+		\vspace{0.3cm}
+		
+		\textbf{Prochaine étape :}
+		
+		Poursuivre avec les essais prévus dans la feuille de route, puis utiliser l'angle filtré comme retour de mesure lors de la future régulation d'équilibre.
 		
 	\end{sessionbox}
 	
@@ -2823,9 +2930,97 @@
 	
 	\subsection*{Filtre complémentaire}
 	
-	L'accéléromètre fournit une estimation de l'inclinaison stable à long terme mais sensible aux vibrations et aux accélérations du robot. Le gyroscope mesure rapidement les variations angulaires mais son intégration dérive progressivement.
+	\subsubsection*{Deux capteurs, deux comportements}
 	
-	Le filtre complémentaire combine les deux informations : le gyroscope décrit principalement les variations rapides, tandis que l'accéléromètre corrige lentement la dérive. Le résultat est une estimation d'angle plus stable pour la boucle d'équilibre.
+	L'accéléromètre mesure la force spécifique sur trois axes. Lorsqu'il est presque immobile, la projection de la gravité permet d'estimer une inclinaison absolue. Cette estimation est néanmoins sensible au bruit, aux vibrations et aux accélérations de translation. Le gyroscope mesure une vitesse angulaire, qui permet de reconstruire les changements d'angle à court terme mais dont l'intégration accumule les petites erreurs de biais.
+	
+	\begin{center}
+		\begin{tabular}{>{\bfseries}p{3cm}p{4.8cm}p{4.8cm}}
+			\toprule
+			Capteur & Avantage principal & Limite principale \\
+			\midrule
+			Accéléromètre & Référence d'inclinaison à long terme. & Bruit et perturbations dynamiques. \\
+			Gyroscope & Mesure fluide des rotations rapides. & Dérive de l'angle intégré. \\
+			\bottomrule
+		\end{tabular}
+	\end{center}
+	
+	\subsubsection*{Angle de tangage avec l'accéléromètre}
+	
+	Avec la convention expérimentale utilisée pour une rotation autour de l'axe Y du MPU6050 :
+	
+	\begin{center}
+		\(\displaystyle \theta_{acc}=\operatorname{atan2}(-A_x,A_z)\frac{180}{\pi}\)
+	\end{center}
+	
+	La fonction \texttt{atan2f()} renvoie un angle en radians en tenant compte du quadrant. La multiplication par \(180/\pi\) permet de travailler en degrés. Les accélérations X et Z peuvent ici être utilisées dans la même unité, car leur facteur de conversion commun s'annule dans le calcul de l'angle.
+	
+	\subsubsection*{Intégration du gyroscope et dérive}
+	
+	Après soustraction de son biais mesuré au repos, la vitesse angulaire sur l'axe Y est exprimée en degrés par seconde. L'intégration discrète est :
+	
+	\begin{center}
+		\(\displaystyle \theta_{gyro,k}=\theta_{gyro,k-1}+\omega_{y,k}\Delta t_k\)
+	\end{center}
+	
+	Par exemple, \(30^\circ/\mathrm{s}\) pendant \(0{,}02\)~s correspondent à une variation de \(0{,}6^\circ\). En revanche, un biais constant résiduel de \(0{,}5^\circ/\mathrm{s}\) créerait une erreur d'environ \(30^\circ\) après une minute : c'est la dérive gyroscopique.
+	
+	\subsubsection*{Pourquoi une base de temps matérielle ?}
+	
+	Le terme \(\omega_y\Delta t\) doit utiliser un intervalle de temps réel, et non une durée supposée de boucle. TIM5 est configuré pour compter à 1 MHz à partir d'une horloge timer de 16 MHz avec \texttt{PSC = 15}. Le logiciel lit deux timestamps :
+	
+	\begin{center}
+		\(\displaystyle \Delta t_k = \frac{t_k-t_{k-1}}{10^6}\)
+	\end{center}
+	
+	Les temps sont mesurés en microsecondes avec un compteur 32 bits non signé ; leur soustraction reste adaptée au débordement du compteur pour des écarts suffisamment courts. Les essais ont affiché environ \(1{,}7\)~ms par acquisition. L'UART n'est sollicité qu'environ toutes les 100 ms afin de ne pas ralentir inutilement l'acquisition.
+	
+	\subsubsection*{Fusion complémentaire : prédiction et correction}
+	
+	À chaque acquisition, le filtre commence par prévoir le nouvel angle à partir du gyroscope, puis le rapproche de l'angle accélérométrique :
+	
+	\begin{center}
+		\(\displaystyle \theta_{pred,k}=\theta_{filtre,k-1}+\omega_{y,k}\Delta t_k\)
+	\end{center}
+	
+	\begin{center}
+		\(\displaystyle \boxed{\theta_{filtre,k}=\alpha\,\theta_{pred,k}+(1-\alpha)\,\theta_{acc,k}}\)
+	\end{center}
+	
+	Le terme \(\alpha\) pèse la prédiction gyroscopique ; le terme \(1-\alpha\) pèse la correction accélérométrique. Un \(\alpha\) proche de 1 privilégie le comportement fluide à court terme du gyroscope, mais corrige la dérive plus lentement. Un \(\alpha\) plus faible corrige plus vite, mais transmet davantage les fluctuations de l'accéléromètre.
+	
+	\begin{center}
+		\fbox{\parbox{0.90\textwidth}{
+				\centering
+				Gyroscope \(\longrightarrow\ \omega_y\Delta t\)
+				\(\longrightarrow\) prédiction avec l'angle filtré précédent\\[0.15cm]
+				Accéléromètre \(\longrightarrow\operatorname{atan2}\longrightarrow\theta_{acc}\)\\[0.15cm]
+				\(\text{prédiction}\times\alpha +\theta_{acc}\times(1-\alpha)\)
+				\(\longrightarrow\boxed{\theta_{filtre}}\)
+		}}
+	\end{center}
+	
+	\subsubsection*{Constante de temps et fréquence d'échantillonnage}
+	
+	Avec un coefficient fixe, le comportement du filtre change si la fréquence d'acquisition varie. La version modulaire utilise donc une constante de temps \(\tau\) exprimée en secondes :
+	
+	\begin{center}
+		\(\displaystyle \alpha_k=\frac{\tau}{\tau+\Delta t_k}\)
+	\end{center}
+	
+	Cette discrétisation donne une correction dépendant du temps réellement écoulé. Pour retrouver environ \(\alpha=0{,}98\) avec \(\Delta t=0{,}0017\)~s :
+	
+	\begin{center}
+		\(\displaystyle \tau\approx\frac{0{,}98}{1-0{,}98}\times0{,}0017 \approx 0{,}083\ \mathrm{s}\)
+	\end{center}
+	
+	Cette constante de temps, choisie initialement pour reproduire les essais, n'est pas encore une valeur optimisée pour la dynamique du robot.
+	
+	\subsubsection*{Architecture logicielle et exploitation future}
+	
+	Le type \texttt{FiltreComplementaire} conserve l'angle estimé et la constante de temps. La fonction \texttt{filtre\_complementaire\_init()} initialise l'état avec le premier angle ACC, et \texttt{filtre\_complementaire\_update()} réalise la prédiction puis la correction. Le programme principal reste responsable de la lecture I2C, du calcul de \(\Delta t\) et de l'affichage UART.
+	
+	L'angle filtré pourra servir de mesure pour une régulation d'équilibre. Il devra cependant être vérifié après fixation mécanique du MPU6050, avec une fréquence de boucle maîtrisée et des tests de sécurité avant commande effective des moteurs.
 	
 	\subsection*{PID}
 	
